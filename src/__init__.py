@@ -17,7 +17,7 @@ def f0(x: float):
 
 def f1(x: float):
     """f1"""
-    return x * x / 2, x
+    return x * x / 2 + 2 * x - 3, x
 
 
 def f2(x: float):
@@ -135,6 +135,7 @@ def parabola(oracle, l: float, r: float, eps: float = 1e-8):
 
 
 def brent(oracle, l: float, r: float, eps: float = 1e-8):
+    K = (3 - sqrt(5)) / 2
     x1 = l
     x3 = r
     x2 = (l + r) / 2 + 1e-8
@@ -145,8 +146,7 @@ def brent(oracle, l: float, r: float, eps: float = 1e-8):
     u = x1
     u_prev = x3
     it = 0
-    K = (3 - sqrt(5)) / 2
-    while abs(u_prev - u) > eps:
+    while abs(u - u_prev) > eps:
         u_prev = u
         d_pr_prev, d_prev = d_prev, d
         u = x2 - ((x2 - x1) ** 2 * (f2 - f3) - (x2 - x3) ** 2 * (f2 - f1)) / \
@@ -203,8 +203,8 @@ def test(method, funcs, x_true, bounds, method_name):
 if __name__ == '__main__':
     # test(parabola, [f0], [0], [(-4, 40)], 'asd')
     fcs = [f1, f2, f4, f5, f6, f7, f10, f12, f13, f9]
-    ans = [0, 5.145735, 2.868034, 0.96609, 0.67956, 5.19978, 7.9787, np.pi, 1 / np.sqrt(2), 17.039]
-    bounds = [(-1, 1), (2.7, 7.5), (1.9, 3.9), (0, 1.2), (-10, 10), (2.7, 7.5), (0, 10), (0, 2 * np.pi), (0.001, 0.99), (1, 20.4)]
+    ans = [-2, 5.145735, 2.868034, 0.96609, 0.67956, 5.19978, 7.9787, np.pi, 1 / np.sqrt(2), 17.039]
+    bounds = [(-6, 2), (2.7, 7.5), (1.9, 3.9), (0, 1.2), (-10, 10), (2.7, 7.5), (0, 10), (0, 2 * np.pi), (0, 1), (3.1, 20.4)]
     # print(f5(ans[3]))
     test(golden_section, fcs, ans, bounds, 'golden search')
     test(parabola, fcs, ans, bounds, 'parabola')
