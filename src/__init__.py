@@ -1,7 +1,10 @@
 import numpy as np
 import cmath
 import random as rnd
+import time
+from src.hw1.hw1 import optimize
 from scipy.constants import golden_ratio
+
 
 fi = golden_ratio
 cos = np.cos
@@ -108,7 +111,7 @@ def parabola(oracle, l: float, r: float, eps: float = 1e-8):
     it = 0
     while abs(u_prev - u) > eps:
         u_prev = u
-        u = x2 - ((x2 - x1) ** 2 * (f2 - f3) - (x2 - x3) ** 2 * (f2 - f1)) /\
+        u = x2 - ((x2 - x1) ** 2 * (f2 - f3) - (x2 - x3) ** 2 * (f2 - f1)) / \
             (2 * (x2 - x1) * (f2 - f3) - 2 * (x2 - x3) * (f2 - f1) + 1e-8)
         # print(u)
         fu = oracle(u)[0]
@@ -135,57 +138,153 @@ def parabola(oracle, l: float, r: float, eps: float = 1e-8):
 
 
 def brent(oracle, l: float, r: float, eps: float = 1e-8):
-    K = (3 - sqrt(5)) / 2
-    x1 = l
-    x3 = r
-    x2 = (l + r) / 2 + 1e-8
-    f1 = oracle(x1)[0]
-    f2 = oracle(x2)[0]
-    f3 = oracle(x3)[0]
-    d, d_prev = x3 - x1, x3 - x1
-    u = x1
-    u_prev = x3
+    a = l
+    b = r
+    x = (l + r) / 2 + 1e-8
+    w, v = x, x
+    fx = oracle(x)[0]
+    fw, fv = fx, fx
+    # fa = oracle(a)[0]
+    # fb = oracle(b)[0]
+    d, d_prev = b - a, b - a
     it = 0
-    while abs(u - u_prev) > eps:
-        u_prev = u
+    K = (3 - sqrt(5)) / 2
+    for i in range(0, 100):
         d_pr_prev, d_prev = d_prev, d
-        u = x2 - ((x2 - x1) ** 2 * (f2 - f3) - (x2 - x3) ** 2 * (f2 - f1)) / \
-            (2 * (x2 - x1) * (f2 - f3) - 2 * (x2 - x3) * (f2 - f1) + 1e-8)
+        tol = eps * abs(x) + eps / 10
+
+        u = x - ((x - w) ** 2 * (fx - fv) - (x - v) ** 2 * (fx - fw)) / \
+            (2 * (x - w) * (fx - fv) - 2 * (x - v) * (fx - fw) + 1e-8)
+
+        if u - a < 2 * tol or b - u < 2 * tol:
+            u = x - np.sign(x - (a + b) / 2) * tol
+
+        if abs(x - (a + b) / 2) + (b - a) / 2 < 2 * tol:
+            break
 
         # golden section chooses 'u' if parabola is failing
-        if not (x1 < u < x3) or abs(x1 - u) < eps or abs(x3 - u) < eps or abs(u - u_prev) > d_pr_prev / 2:
-            if u_prev < (x1 + x3) / 2:
-                u = x1 + K * (x3 - x1)
-                d = x3 - u_prev
+        if not (a < u < b) or abs(a - u) < eps or abs(b - u) < eps or abs(x - v) > d_pr_prev / 2:
+            if x < (a + b) / 2:
+                u = x + K * (b - a)
+                d_prev = b - x
             else:
-                u = x3 - K * (x3 - x1)
-                d = u_prev - x1
-        else:
-            d = abs(u - u_prev)
+                u = x - K * (x - a)
+                d_prev = x - a
+        if abs(u - x) < tol:
+            u = x + np.sign(u - x) * tol
+        d = abs(u - x)
 
-        # if abs(u - u_prev) < eps:
-        #     u = u_prev + np.sign(u - u_prev) * eps
         fu = oracle(u)[0]
-        if u > x2:
-            if fu > f2:
-                x3 = u
-                f3 = fu
+        if fu < fx:
+            if u > x:
+                a = x
             else:
-                x1 = x2
-                f1 = f2
-                x2 = u
-                f2 = fu
+                b = x
+            v = w, w = x, x = u, fv = fw, fw = fx, fx = fu
         else:
-            if fu > f2:
-                x1 = u
-                f1 = fu
+            if u > x:
+                b = u
             else:
-                x3 = x2
-                f3 = f2
-                x2 = u
-                f2 = fu
+                a = u
+            if fu < fw or abs(w - x) < eps:
+                v = w
+                w = u
+                fv = fw
+                fw = fu
+            elif fu < fv or abs(v - x) < eps or abs(v - w) < eps:
+                v = u
+                fv = fu
         it += 1
-    return u, it
+    return x, it
+
+
+# def eq(a: float, b: float, eps: float = 1e-8):
+#     return abs(a - b) < eps
+
+
+def brent_real(oracle, a: float, b: float, eps: float = 1e-8):
+    # K = (3 - sqrt(5)) / 2
+    K = 0.381966
+    # x, w, v = (a + b) / 2, (a + b) / 2, (a + b) / 2
+    x, w, v = a + K * (b - a), a + K * (b - a), a + K * (b - a)
+    d, d2 = 0, 0
+    # d, d2 = K * (r - l), K * (r - l)
+    fx = oracle(x)[0]
+    fw, fv = fx, fx
+    it = []
+
+    pr = 0
+    gl = 0
+    for i in range(50):
+        mid = (a + b) / 2
+        tol1 = eps * abs(x) + eps / 10
+        tol2 = tol1 * 2
+        if abs(x - mid) < tol2 - (b - a) / 2:
+            break
+        # if len(it) > 0 and abs(x - w) < tol or abs(l - r) < eps:
+        #     break
+        p, q, r = 0, 0, 0
+        if abs(d2) > tol1:
+            r = (x - w) * (fx - fv)
+            q = (x - v) * (fx - fw)
+            p = (x - v) * q - (x - w) * r
+            q = 2 * (q - r)
+            if q > 0:
+                p = -p
+            else:
+                q = -q
+            # if eq(x, w) or eq(x, v) or eq(w, v):
+            #     q = 0
+            r = d2
+            d2 = d
+        if abs(p) < abs(0.5 * q * r) and q * (a - x) < p < q * (b - x):
+            # parabolic interpolation
+            d = p / q
+            u = x + d
+            # f should not be evaluated close to a and b
+            if u - a < tol2 or b - u < tol2:
+                d = tol1 if x < mid else -tol1
+            pr += 1
+        else:
+            # golden section step
+            d2 = (b if x < mid else a) - x
+            d = K * d2
+            gl += 1
+        # f should not be evaluated close to x
+        u = x
+        if abs(d) > tol1:
+            u += d
+        elif d > 0:
+            u += tol1
+        else:
+            u -= tol1
+
+        fu = oracle(u)[0]
+
+        if fu < fx:
+            # we found a better point
+            if u > x:
+                a = x
+            else:
+                b = x
+            v, w, x = w, x, u
+            fv, fw, fx = fw, fx, fu
+        else:
+            # the point is not that good but may be it's at least better the the other two points
+            if u < x:
+                a = u
+            else:
+                b = u
+            if fu < fw or abs(w - x) < eps:
+                # if it's the second best
+                v, w = w, u
+                fv, fw = fw, fu
+            elif fu < fv or abs(v - x) < eps or abs(v - w) < eps:
+                # if it's the third best
+                v = u
+                fv = fu
+        it.append(x)
+    return x, len(it)
 
 
 def test(method, funcs, x_true, bounds, method_name):
@@ -204,8 +303,9 @@ if __name__ == '__main__':
     # test(parabola, [f0], [0], [(-4, 40)], 'asd')
     fcs = [f1, f2, f4, f5, f6, f7, f10, f12, f13, f9]
     ans = [-2, 5.145735, 2.868034, 0.96609, 0.67956, 5.19978, 7.9787, np.pi, 1 / np.sqrt(2), 17.039]
-    bounds = [(-6, 2), (2.7, 7.5), (1.9, 3.9), (0, 1.2), (-10, 10), (2.7, 7.5), (0, 10), (0, 2 * np.pi), (0, 1), (3.1, 20.4)]
+    bounds = [(-6, 2), (2.7, 7.5), (1.9, 3.9), (0, 1.2), (-10, 10), (2.7, 7.5), (0, 10), (0, 2 * np.pi), (0, 1),
+              (3.1, 20.4)]
     # print(f5(ans[3]))
     test(golden_section, fcs, ans, bounds, 'golden search')
     test(parabola, fcs, ans, bounds, 'parabola')
-    test(brent, fcs, ans, bounds, 'brent')
+    test(optimize, fcs, ans, bounds, 'brent')
