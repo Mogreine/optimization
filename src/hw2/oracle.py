@@ -1,14 +1,18 @@
 import numpy as np
 from sklearn.datasets import load_svmlight_file
 from scipy.sparse import diags
+from scipy.sparse import hstack
 
 
-# gotta test it
 def make_oracle(path, format='libsvm'):
     if format == 'libsvm':
         X, y = load_svmlight_file(path)
+        ones_col = np.ones((X.shape[0], 1))
+        X = hstack((X, ones_col))
+
         # initially y = [-1, +1]^n, we map it into y = [0, 1]^n
         y = (y + 1) // 2
+
         return Oracle(X, y)
 
 
