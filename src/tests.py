@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.special import expit
 from src.hw2.oracle import make_oracle, OracleTester
-from src.hw2.optimization import GradientDescent
+from src.hw2.optimization import gradient_descent, newton
 from src.hw2.oracle import Oracle
 from sklearn.datasets import load_svmlight_file
 from sklearn.linear_model import LogisticRegression
@@ -20,7 +20,7 @@ def test_optimization():
     its = []
     for i in range(5):
         w_0 = np.random.normal(0, 1, oracle.features)
-        w_opt, iters = GradientDescent.optimize(oracle, w_0, max_iter=max_iter, tol=1e-8)
+        w_opt, iters = gradient_descent(oracle, w_0, line_search_method='brent', max_iter=max_iter, tol=1e-4)
         its.append(iters)
 
     print(f'Av. iters: {np.mean(its)}')
