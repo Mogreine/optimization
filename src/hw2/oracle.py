@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.datasets import load_svmlight_file
 from scipy.sparse import diags
 from scipy.sparse import hstack
+from scipy.special import expit
 
 
 def make_oracle(path, format='libsvm'):
@@ -21,13 +22,14 @@ class Oracle:
         self._X = X.copy()
         self._X = self._X.T
         self._y = np.array(y, copy=True)
-        # because we look at weights
-        self.N = self._X.shape[0]
+
+        self.features = self._X.shape[0]
+        self.samples = self._X.shape[1]
         assert len(self._y.shape) == 1, "y should be a vector: len(y.shape) is not 1"
 
     @staticmethod
     def sigmoid(x: np.array):
-        return 1 / (1 + np.exp(-x))
+        return expit(x)
 
     def sigmoid_w(self, x: np.array, w: np.array):
         return self.sigmoid(w.dot(x))
@@ -49,18 +51,18 @@ class Oracle:
         sig_x = self.sigmoid_X(w)
 
         # sum of y_i*log(sig_w(x_i))
-        ylog = np.log(sig_x) @ self._y
+        ylog = np.log(sig_x + 1e-12) @ self._y
 
         # sum of (1 - y_i)*log(1 - sig_w(x_i))
-        ylog2 = (1 - self._y) @ np.log(1 - sig_x)
+        ylog2 = (1 - self._y) @ np.log(1 - sig_x + 1e-12)
 
-        return -(ylog + ylog2) / self.N
+        return -(ylog + ylog2) / self.samples
 
     def grad(self, w):
-        return self._X @ (self.sigmoid_X(w) - self._y) / self.N
+        return self._X @ (self.sigmoid_X(w) - self._y) / self.samples
 
     def hessian(self, w):
-        return self._X.dot(self.sigmoid_X_diag(w)).dot(self._X.T) / self.N
+        return self._X.dot(self.sigmoid_X_diag(w)).dot(self._X.T) / self.samples
 
     def hessian_vec_product(self, x, d):
         pass
