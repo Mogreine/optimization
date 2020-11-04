@@ -102,11 +102,24 @@ def brent(oracle, a: float, b: float, eps: float = 1e-3):
     return x
 
 
+# TODO: Стоит посмотреть в книге про "c" и мб протестить "po"
+def armijo(f, grad, xk, pk, is_newton=False):
+    alpha, po = 1 if is_newton else 100, 1 / 2
+    c = 0.0001
+    xk_grad = grad(xk)
+
+    # armijo condition
+    while f(xk + alpha * pk) > f(xk) + c * alpha * xk_grad @ pk:
+        alpha *= po
+
+    return alpha, 1
+
+
 # TODO: сделать такой же формат вывода, как и у scipy_line_search
 def line_search(oracle, x_k, p_k=None, method='brent', tol=1e-3):
     p_k = p_k if p_k is not None else -oracle.grad(x_k)
     if method == 'brent' or method == 'gs':
-        l, r = 0, 50
+        l, r = 0, 100
         f_line = lambda x: oracle.value(x_k + x * p_k)
 
         if method == 'brent':
@@ -115,9 +128,11 @@ def line_search(oracle, x_k, p_k=None, method='brent', tol=1e-3):
             return golden_section(f_line, l, r, eps=tol), 0
     if method == 'wolf':
         return scipy_line_search(oracle.value, oracle.grad, x_k, p_k)
+    if method == 'armijo':
+        return armijo(oracle.value, oracle.grad, x_k, p_k)
 
 
-def gradient_descent(oracle, x0, line_search_method='brent', tol=1e-8, max_iter=int(1e5)):
+def gradient_descent(oracle, x0, line_search_method='brent', tol=1e-8, max_iter=int(1e4)):
     iters = 0
     x0_grad = oracle.grad(x0)
 
@@ -143,7 +158,7 @@ def gradient_descent(oracle, x0, line_search_method='brent', tol=1e-8, max_iter=
     return x_k, iters
 
 
-def newton(oracle, x0, line_search_method='brent', tol=1e-8, max_iter=int(1e5)):
+def newton(oracle, x0, line_search_method='brent', tol=1e-8, max_iter=int(1e4)):
     iters = 0
 
     def stop_criterion(x, tol):

@@ -15,12 +15,12 @@ b = np.array([1, 1, 1])
 def test_optimization():
     oracle = make_oracle('hw2/data/a1a.txt')
 
-    max_iter = int(1e5)
+    max_iter = int(1e4)
 
     its = []
     for i in range(5):
         w_0 = np.random.normal(0, 1, oracle.features)
-        w_opt, iters = gradient_descent(oracle, w_0, line_search_method='brent', max_iter=max_iter, tol=1e-4)
+        w_opt, iters = gradient_descent(oracle, w_0, line_search_method='armijo', max_iter=max_iter, tol=1e-8)
         its.append(iters)
 
     print(f'Av. iters: {np.mean(its)}')
