@@ -1,8 +1,10 @@
 import numpy as np
+import scipy
 from sklearn.datasets import load_svmlight_file
 from scipy.sparse import diags
 from scipy.sparse import hstack
 from scipy.special import expit
+from scipy.sparse.linalg import svds, norm
 
 
 def make_oracle(path, format='libsvm'):
@@ -22,10 +24,22 @@ class Oracle:
         self._X = X.copy()
         self._X = self._X.T
         self._y = np.array(y, copy=True)
+        self.lip_const = None
 
         self.features = self._X.shape[0]
         self.samples = self._X.shape[1]
         assert len(self._y.shape) == 1, "y should be a vector: len(y.shape) is not 1"
+
+    def calc_lipschitz(self):
+        if self.lip_const is None:
+            svd_vals = svds(self._X, k=1, which='LM', return_singular_vectors=True)[1]
+            max_svd_val = svd_vals[0]
+            self.lip_const = max_svd_val ** 2 / self.samples ** 2
+
+            self.lip_const = norm(self._X @ self._X.T) ** 2 / self.samples ** 2
+
+            self.lip_const = norm(self._X) / 2 / self.samples
+        return self.lip_const
 
     @staticmethod
     def sigmoid(x: np.array):

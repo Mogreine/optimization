@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.sparse.linalg import inv as sparse_inv
 from scipy.optimize import line_search as scipy_line_search
+from scipy.sparse.linalg import norm, svds
 
 
 def golden_section(func, a: float, b: float, eps: float = 1e-8):
@@ -115,8 +116,22 @@ def armijo(f, grad, xk, pk, is_newton=False):
     return alpha, 1
 
 
+def lip_const(f, grad, xk, pk):
+    # return 1 / oracle.calc_lipschitz()
+    # return 1 / norm(oracle.hessian(w)) ** 2
+    # return 1 / svds(oracle.hessian(w), k=1, which='LM', return_singular_vectors=True)[1][0] ** 2
+    # svd_vals = svds(oracle.hessian(w), return_singular_vectors=True)[1]
+    # svd_min, svd_max = np.min(svd_vals), np.max(svd_vals)
+    # return 2 / (svd_min + svd_max)
+    L = 10000
+    # while f(xk + 1 / L * pk) < f(xk) + grad(xk) @ (1 / L * pk) + L / 2 * np.linalg.norm(1 / L * pk):
+    while f(xk + pk) < f(xk) + grad(xk) @ pk + L / 2 * np.linalg.norm(pk):
+        L /= 2
+    return 1 / L
+
+
 # TODO: сделать такой же формат вывода, как и у scipy_line_search
-def line_search(oracle, x_k, p_k=None, method='brent', tol=1e-3):
+def line_search(oracle, x_k, p_k=None, method='wolf', tol=1e-3):
     p_k = p_k if p_k is not None else -oracle.grad(x_k)
     if method == 'brent' or method == 'gs':
         l, r = 0, 100
@@ -130,6 +145,8 @@ def line_search(oracle, x_k, p_k=None, method='brent', tol=1e-3):
         return scipy_line_search(oracle.value, oracle.grad, x_k, p_k)
     if method == 'armijo':
         return armijo(oracle.value, oracle.grad, x_k, p_k)
+    if method == 'lip':
+        return lip_const(oracle.value, oracle.grad, x_k, p_k), 1
 
 
 def gradient_descent(oracle, x0, line_search_method='brent', tol=1e-8, max_iter=int(1e4)):

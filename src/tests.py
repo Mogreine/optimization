@@ -20,7 +20,8 @@ def test_optimization():
     its = []
     for i in range(5):
         w_0 = np.random.normal(0, 1, oracle.features)
-        w_opt, iters = gradient_descent(oracle, w_0, line_search_method='armijo', max_iter=max_iter, tol=1e-8)
+        # w_0 = np.zeros(oracle.features)
+        w_opt, iters = gradient_descent(oracle, w_0, line_search_method='wolf', max_iter=max_iter, tol=1e-8)
         its.append(iters)
 
     print(f'Av. iters: {np.mean(its)}')
