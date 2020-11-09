@@ -76,7 +76,7 @@ class Oracle:
         return self._X @ (self.sigmoid_X(w) - self._y) / self.samples
 
     def hessian(self, w):
-        return self._X.dot(self.sigmoid_X_diag(w)).dot(self._X.T) / self.samples
+        return (self._X @ self.sigmoid_X_diag(w) @ self._X.T / self.samples).toarray()
 
     def hessian_vec_product(self, x, d):
         pass

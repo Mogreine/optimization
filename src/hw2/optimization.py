@@ -116,6 +116,7 @@ def armijo(f, grad, xk, pk, is_newton=False):
     return alpha, 1
 
 
+# TODO: посмотреть как сделал Саня
 def lip_const(f, grad, xk, pk):
     # return 1 / oracle.calc_lipschitz()
     # return 1 / norm(oracle.hessian(w)) ** 2
@@ -130,11 +131,35 @@ def lip_const(f, grad, xk, pk):
     return 1 / L
 
 
+def is_positive(X):
+    try:
+        L = np.linalg.cholesky(X)
+    except np.linalg.LinAlgError:
+        return False
+    return True
+
+
+def is_symmetric(X):
+    return np.allclose(X, X.T)
+
+
+def is_positive_symmetric(X):
+    return is_symmetric(X) and is_positive(X)
+
+
+def correct_hessian(H):
+    eps = 1e-4
+    I = np.eye(H.shape[0]) * eps
+    while not is_positive(H + I):
+        I *= 2
+    return H + I
+
+
 # TODO: сделать такой же формат вывода, как и у scipy_line_search
 def line_search(oracle, x_k, p_k=None, method='wolf', tol=1e-3):
     p_k = p_k if p_k is not None else -oracle.grad(x_k)
     if method == 'brent' or method == 'gs':
-        l, r = 0, 100
+        l, r = 0, 1
         f_line = lambda x: oracle.value(x_k + x * p_k)
 
         if method == 'brent':
@@ -175,7 +200,7 @@ def gradient_descent(oracle, x0, line_search_method='brent', tol=1e-8, max_iter=
     return x_k, iters
 
 
-def newton(oracle, x0, line_search_method='brent', tol=1e-8, max_iter=int(1e4)):
+def newton(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
     iters = 0
 
     def stop_criterion(x, tol):
@@ -184,15 +209,18 @@ def newton(oracle, x0, line_search_method='brent', tol=1e-8, max_iter=int(1e4)):
     x_k = x0.copy()
     while iters < max_iter:
         grad = oracle.grad(x_k)
+
+        if stop_criterion(grad, tol):
+            break
+
         hess = oracle.hessian(x_k)
-        hess_inv = sparse_inv(hess)
+        hess = correct_hessian(hess)
+        hess_inv = np.linalg.inv(hess)
         p_k = -hess_inv @ grad
 
         alpha = line_search(oracle, x_k, p_k, method=line_search_method, tol=1e-3)[0]
         x_k = x_k + alpha * p_k
 
-        if stop_criterion(x_k, tol):
-            break
         print(f"{iters}: {oracle.value(x_k)}; a: {alpha}")
         iters += 1
     return x_k, iters

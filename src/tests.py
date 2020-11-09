@@ -18,10 +18,11 @@ def test_optimization():
     max_iter = int(1e4)
 
     its = []
-    for i in range(5):
+    for i in range(10):
         w_0 = np.random.normal(0, 1, oracle.features)
         # w_0 = np.zeros(oracle.features)
-        w_opt, iters = gradient_descent(oracle, w_0, line_search_method='wolf', max_iter=max_iter, tol=1e-8)
+        # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
+        w_opt, iters = newton(oracle, w_0, line_search_method='wolf', max_iter=max_iter, tol=1e-8)
         its.append(iters)
 
     print(f'Av. iters: {np.mean(its)}')
@@ -37,7 +38,8 @@ def test_optimization():
                              tol=1e-8,
                              max_iter=max_iter,
                              random_state=1,
-                             fit_intercept=False
+                             fit_intercept=False,
+                             solver='newton-cg'
                              )
     clf.fit(X, y)
     w_sk = clf.coef_[0]
