@@ -1,7 +1,9 @@
 import numpy as np
+from scipy.linalg import eigh as scipy_eigh
+from scipy.linalg import eig as scipy_eig
 from scipy.sparse.linalg import inv as sparse_inv
 from scipy.optimize import line_search as scipy_line_search
-from scipy.sparse.linalg import norm, svds
+from scipy.sparse.linalg import norm, svds, eigsh
 
 
 def golden_section(func, a: float, b: float, eps: float = 1e-8):
@@ -147,7 +149,7 @@ def is_positive_symmetric(X):
     return is_symmetric(X) and is_positive(X)
 
 
-def correct_hessian(H):
+def correct_hessian_addition(H):
     eps = 1e-4
     I = np.eye(H.shape[0]) * eps
     while not is_positive(H + I):
@@ -155,11 +157,19 @@ def correct_hessian(H):
     return H + I
 
 
+# Doesn't work, eigen values do not converge
+def correct_hessian_eigvalues(H):
+    eps = 1e-3
+    eig_val, eig_vec = np.linalg.eigh(H)
+    eig_val[eig_val < 0] = eps
+    return eig_vec @ np.diagflat(eig_val) @ eig_vec.T
+
+
 # TODO: сделать такой же формат вывода, как и у scipy_line_search
 def line_search(oracle, x_k, p_k=None, method='wolf', tol=1e-3):
     p_k = p_k if p_k is not None else -oracle.grad(x_k)
     if method == 'brent' or method == 'gs':
-        l, r = 0, 1
+        l, r = 0, 100
         f_line = lambda x: oracle.value(x_k + x * p_k)
 
         if method == 'brent':
@@ -214,7 +224,7 @@ def newton(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
             break
 
         hess = oracle.hessian(x_k)
-        hess = correct_hessian(hess)
+        hess = correct_hessian_addition(hess)
         hess_inv = np.linalg.inv(hess)
         p_k = -hess_inv @ grad
 
