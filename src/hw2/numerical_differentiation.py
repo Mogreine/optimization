@@ -16,10 +16,10 @@ tester = OracleTester(oracle)
 def test_derivative(f):
     errors = []
     for i in range(100):
-        w = np.random.normal(0, 1, oracle.N)
+        w = np.random.normal(0, 1, oracle.features)
         w /= np.linalg.norm(w)
 
-        d = np.random.normal(0, 1, oracle.N)
+        d = np.random.normal(0, 1, oracle.features)
         d /= np.linalg.norm(d)
 
         err = f(w, d)
