@@ -227,6 +227,31 @@ def gradient_descent(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=i
     return x_k, iters
 
 
+# only for p.d. matrices
+def solve_le_cholesky(X, b):
+    L = np.linalg.cholesky(X)
+    y = np.linalg.solve(L, b)
+    x = np.linalg.solve(L.conj().T, y)
+    return x
+
+
+def solve_le_inv(X, b):
+    return np.linalg.inv(X) @ b
+
+
+def solve_conj(X, b):
+    pass
+
+
+def solve_le(X, b, method='cholesky'):
+    if method == 'cholesky':
+        return solve_le_cholesky(X, b)
+    if method == 'inv':
+        return solve_le_inv(X, b)
+    if method == 'conj':
+        return solve_conj(X, b)
+
+
 def newton(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
     iters = 0
 
@@ -242,8 +267,8 @@ def newton(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
 
         hess = oracle.hessian(x_k)
         hess = correct_hessian_addition(hess)
-        hess_inv = np.linalg.inv(hess)
-        p_k = -hess_inv @ grad
+        # hess_inv = np.linalg.inv(hess)
+        p_k = -solve_le(hess, grad, method='cholesky')
 
         alpha = line_search(oracle, x_k, p_k, is_newton=True, method=line_search_method, tol=1e-3)[0]
         if alpha is None:
