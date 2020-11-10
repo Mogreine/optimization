@@ -24,7 +24,7 @@ def test_derivative(f):
 
         err = f(w, d)
         errors.append(err)
-    print(f'Mean error: {np.mean(errors)}')
+    print(f'Mean error: {np.max(errors)}')
 
 
 test_derivative(tester.test_grad)

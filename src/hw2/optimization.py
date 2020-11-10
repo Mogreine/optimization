@@ -239,8 +239,48 @@ def solve_le_inv(X, b):
     return np.linalg.inv(X) @ b
 
 
-def solve_conj(X, b):
-    pass
+def solve_conj(A, b, Ax=None, tol=1e-8):
+    zero = np.zeros(len(b))
+    xk = np.ones(len(b))
+    # xk = np.random.normal(0, 1, len(b))
+    rk = A @ xk - b
+    pk = -rk
+    k = 0
+    while np.linalg.norm(rk) > tol:
+    # while np.allclose(rk, zero):
+        rk_prod = rk @ rk
+        Apk = A @ pk
+        ak = rk_prod / (pk @ Apk)
+        xk = xk + ak * pk
+        rk = rk + ak * Apk
+        bk = rk @ rk / rk_prod
+        pk = -rk + bk * pk
+        k += 1
+    print(f'conj iters: {k}')
+    return xk
+
+
+def solve_conj_hess_free(H, Ax, b, tol=1e-5):
+    xk = np.ones(len(b))
+    # xk = np.random.normal(0, 1, len(b))
+    rk_free = Ax(xk) - b
+    rk = H @ xk - b
+    rk = rk_free
+    pk = -rk
+    k = 0
+    while np.linalg.norm(rk) > tol:
+    # while np.allclose(rk, zero):
+        rk_prod = rk @ rk
+        Apk_free = Ax(pk)
+        Apk = H @ pk
+        ak = rk_prod / (pk @ Apk_free)
+        xk = xk + ak * pk
+        rk = rk + ak * Apk_free
+        bk = rk @ rk / rk_prod
+        pk = -rk + bk * pk
+        k += 1
+    print(f'conj iters: {k}')
+    return xk
 
 
 def solve_le(X, b, method='cholesky'):
@@ -269,6 +309,35 @@ def newton(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
         hess = correct_hessian_addition(hess)
         # hess_inv = np.linalg.inv(hess)
         p_k = -solve_le(hess, grad, method='cholesky')
+
+        alpha = line_search(oracle, x_k, p_k, is_newton=True, method=line_search_method, tol=1e-3)[0]
+        if alpha is None:
+            alpha = 1
+
+        x_k = x_k + alpha * p_k
+
+        print(f"{iters}: {oracle.value(x_k)}; a: {alpha}")
+        iters += 1
+    return x_k, iters
+
+
+def newton_hess_free(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
+    iters = 0
+
+    def stop_criterion(x, tol):
+        return np.linalg.norm(x) ** 2 < tol
+
+    x_k = x0.copy()
+    while iters < max_iter:
+        grad = oracle.grad(x_k)
+
+        if stop_criterion(grad, tol):
+            break
+
+        hess = oracle.hessian(x_k)
+        hess = correct_hessian_addition(hess)
+        Hd = lambda d: oracle.hessian_vec_product(x_k, d) + d * 1e-4
+        p_k = -solve_conj_hess_free(hess, Hd, grad)
 
         alpha = line_search(oracle, x_k, p_k, is_newton=True, method=line_search_method, tol=1e-3)[0]
         if alpha is None:

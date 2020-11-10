@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.special import expit
 from src.hw2.oracle import make_oracle, OracleTester
-from src.hw2.optimization import gradient_descent, newton
+from src.hw2.optimization import gradient_descent, newton, newton_hess_free
 from src.hw2.oracle import Oracle
 from sklearn.datasets import load_svmlight_file
 from sklearn.linear_model import LogisticRegression
@@ -22,8 +22,10 @@ def test_optimization():
         w_0 = np.random.normal(0, 1, oracle.features)
         # w_0 = np.zeros(oracle.features)
         # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
-        w_opt, iters = newton(oracle, w_0, line_search_method='wolf', max_iter=max_iter, tol=1e-8)
+        # w_0 = np.ones(oracle.features)
+        w_opt, iters = newton_hess_free(oracle, w_0, line_search_method='brent_scipy', max_iter=max_iter, tol=1e-8)
         its.append(iters)
+
 
     print(f'Av. iters: {np.mean(its)}')
 
@@ -50,8 +52,11 @@ def test_optimization():
 
 def test_shit():
     X = np.array([*range(9)]).reshape((3, 3))
+    X = X + X.T
+    eig_vals, eig_vecs = np.linalg.eigh(X)
+    print(eig_vecs)
     print(X)
-    print(X @ b)
+    print(eig_vecs @ np.diagflat(eig_vals) @ eig_vecs.T)
 
 
 # test_shit()

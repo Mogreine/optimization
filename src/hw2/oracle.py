@@ -78,8 +78,13 @@ class Oracle:
     def hessian(self, w):
         return (self._X @ self.sigmoid_X_diag(w) @ self._X.T / self.samples).toarray()
 
-    def hessian_vec_product(self, x, d):
-        pass
+    def hessian_vec_product(self, w, d):
+        eps = 1e-8
+        f_d = self.grad(w + eps * d)
+        f_w = self.grad(w - eps * d)
+
+        fwd_hessian_true = (f_d - f_w) / (2 * eps)  # + eps / 2
+        return fwd_hessian_true
 
     def fuse_value_grad(self, w):
         return self.value(w), self.grad(w)
@@ -104,6 +109,7 @@ class OracleTester:
         fwd_grad_test = self.oracle.grad(w) @ d
 
         error = np.linalg.norm(fwd_grad_test - fwd_grad_true)
+        print(np.allclose(fwd_grad_test, fwd_grad_true))
 
         return error
 
