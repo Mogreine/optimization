@@ -2,7 +2,7 @@ import numpy as np
 from scipy.linalg import eigh as scipy_eigh
 from scipy.linalg import eig as scipy_eig
 from scipy.sparse.linalg import inv as sparse_inv
-from scipy.optimize import line_search as scipy_line_search
+from scipy.optimize import line_search as scipy_line_search, brent as scipy_brent
 from scipy.sparse.linalg import norm, svds, eigsh
 
 
@@ -106,22 +106,35 @@ def brent(oracle, a: float, b: float, eps: float = 1e-3):
 
 
 # TODO: Доделать метод правильно, чтобы начинал с 1 и шел либо в большую сторону, либо в меньшую
-def armijo(f, grad, xk, pk, is_newton=False):
+def armijo_vasya(f, grad, xk, pk, is_newton=False):
     alpha = 1
-    po = 1 / 2
+    b1 = 0.9
+    b2 = 1.2
     c = 0.0001
     xk_grad = grad(xk)
 
     # we can increase step
     if f(xk + alpha * pk) < f(xk) + c * alpha * xk_grad @ pk:
-        po = 1 / po
         while f(xk + alpha * pk) < f(xk) + c * alpha * xk_grad @ pk:
-            alpha *= po
+            alpha *= b2
     else:
         while f(xk + alpha * pk) > f(xk) + c * alpha * xk_grad @ pk:
-            alpha *= po
+            alpha *= b1
 
-    return alpha / po, 1
+    return alpha, 1
+
+
+def armijo(f, grad, xk, pk, is_newton=False):
+    alpha = 1 if is_newton else 100
+    po = 0.8
+    c = 0.0001
+    xk_grad = grad(xk)
+
+    # armijo condition
+    while f(xk + alpha * pk) > f(xk) + c * alpha * xk_grad @ pk:
+        alpha *= po
+
+    return alpha, 1
 
 
 def lip_const(f, grad, xk, pk):
@@ -165,20 +178,22 @@ def correct_hessian_eigvalues(H):
 
 
 # TODO: сделать такой же формат вывода, как и у scipy_line_search
-def line_search(oracle, x_k, p_k=None, method='wolf', tol=1e-3):
+def line_search(oracle, x_k, p_k=None, is_newton=False, method='wolf', tol=1e-3):
     p_k = p_k if p_k is not None else -oracle.grad(x_k)
-    if method == 'brent' or method == 'gs':
-        l, r = 0, 100
+    if method == 'brent' or method == 'gs' or method == 'brent_scipy':
+        l, r = 0, 1
         f_line = lambda x: oracle.value(x_k + x * p_k)
 
         if method == 'brent':
             return brent(f_line, l, r, eps=tol), 0
+        if method == 'brent_scipy':
+            return scipy_brent(f_line, tol=tol), 0
         if method == 'gs':
             return golden_section(f_line, l, r, eps=tol), 0
-    if method == 'wolf':
+    if method == 'wolfe':
         return scipy_line_search(oracle.value, oracle.grad, x_k, p_k)
     if method == 'armijo':
-        return armijo(oracle.value, oracle.grad, x_k, p_k)
+        return armijo(oracle.value, oracle.grad, x_k, p_k, is_newton=is_newton)
     if method == 'lip':
         return lip_const(oracle.value, oracle.grad, x_k, p_k), 1
 
@@ -200,6 +215,9 @@ def gradient_descent(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=i
         # f_line = lambda x: oracle.value(x_k - x * grad)
 
         alpha = line_search(oracle, x_k, p_k, method=line_search_method, tol=1e-3)[0]
+        if alpha is None:
+            alpha = 1
+
         x_k = x_k + alpha * p_k
 
         if stop_criterion(x_k, tol):
@@ -227,7 +245,10 @@ def newton(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
         hess_inv = np.linalg.inv(hess)
         p_k = -hess_inv @ grad
 
-        alpha = line_search(oracle, x_k, p_k, method=line_search_method, tol=1e-3)[0]
+        alpha = line_search(oracle, x_k, p_k, is_newton=True, method=line_search_method, tol=1e-3)[0]
+        if alpha is None:
+            alpha = 1
+
         x_k = x_k + alpha * p_k
 
         print(f"{iters}: {oracle.value(x_k)}; a: {alpha}")
