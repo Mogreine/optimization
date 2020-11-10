@@ -105,32 +105,31 @@ def brent(oracle, a: float, b: float, eps: float = 1e-3):
     return x
 
 
-# TODO: Стоит посмотреть в книге про "c" и мб протестить "po"
+# TODO: Доделать метод правильно, чтобы начинал с 1 и шел либо в большую сторону, либо в меньшую
 def armijo(f, grad, xk, pk, is_newton=False):
-    alpha, po = 1 if is_newton else 100, 1 / 2
+    alpha = 1
+    po = 1 / 2
     c = 0.0001
     xk_grad = grad(xk)
 
-    # armijo condition
-    while f(xk + alpha * pk) > f(xk) + c * alpha * xk_grad @ pk:
-        alpha *= po
+    # we can increase step
+    if f(xk + alpha * pk) < f(xk) + c * alpha * xk_grad @ pk:
+        po = 1 / po
+        while f(xk + alpha * pk) < f(xk) + c * alpha * xk_grad @ pk:
+            alpha *= po
+    else:
+        while f(xk + alpha * pk) > f(xk) + c * alpha * xk_grad @ pk:
+            alpha *= po
 
-    return alpha, 1
+    return alpha / po, 1
 
 
-# TODO: посмотреть как сделал Саня
 def lip_const(f, grad, xk, pk):
-    # return 1 / oracle.calc_lipschitz()
-    # return 1 / norm(oracle.hessian(w)) ** 2
-    # return 1 / svds(oracle.hessian(w), k=1, which='LM', return_singular_vectors=True)[1][0] ** 2
-    # svd_vals = svds(oracle.hessian(w), return_singular_vectors=True)[1]
-    # svd_min, svd_max = np.min(svd_vals), np.max(svd_vals)
-    # return 2 / (svd_min + svd_max)
-    L = 10000
-    # while f(xk + 1 / L * pk) < f(xk) + grad(xk) @ (1 / L * pk) + L / 2 * np.linalg.norm(1 / L * pk):
-    while f(xk + pk) < f(xk) + grad(xk) @ pk + L / 2 * np.linalg.norm(pk):
-        L /= 2
-    return 1 / L
+    L = 0.01
+    grad_xk = grad(xk)
+    while f(xk + 1 / L * pk) > f(xk) + 1 / L * grad_xk @ pk + 1 / 2 / L * pk @ pk:
+        L *= 2
+    return 2 / L
 
 
 def is_positive(X):
@@ -184,7 +183,7 @@ def line_search(oracle, x_k, p_k=None, method='wolf', tol=1e-3):
         return lip_const(oracle.value, oracle.grad, x_k, p_k), 1
 
 
-def gradient_descent(oracle, x0, line_search_method='brent', tol=1e-8, max_iter=int(1e4)):
+def gradient_descent(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
     iters = 0
     x0_grad = oracle.grad(x0)
 
