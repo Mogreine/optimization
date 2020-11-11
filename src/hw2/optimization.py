@@ -260,22 +260,20 @@ def solve_conj(A, b, Ax=None, tol=1e-8):
     return xk
 
 
-def solve_conj_hess_free(H, Ax, b, tol=1e-5):
+def solve_conj_hess_free_naive(Ax, b, tol=1e-8):
     xk = np.ones(len(b))
     # xk = np.random.normal(0, 1, len(b))
     rk_free = Ax(xk) - b
-    rk = H @ xk - b
-    rk = rk_free
+    rk = Ax(xk) - b
     pk = -rk
     k = 0
     while np.linalg.norm(rk) > tol:
     # while np.allclose(rk, zero):
         rk_prod = rk @ rk
-        Apk_free = Ax(pk)
-        Apk = H @ pk
-        ak = rk_prod / (pk @ Apk_free)
+        Apk = Ax(pk)
+        ak = rk_prod / (pk @ Apk)
         xk = xk + ak * pk
-        rk = rk + ak * Apk_free
+        rk = rk + ak * Apk
         bk = rk @ rk / rk_prod
         pk = -rk + bk * pk
         k += 1
@@ -336,6 +334,7 @@ def newton_hess_free(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=i
 
         hess = oracle.hessian(x_k)
         hess = correct_hessian_addition(hess)
+        # хуево, надо сделать подругому
         Hd = lambda d: oracle.hessian_vec_product(x_k, d) + d * 1e-4
         p_k = -solve_conj_hess_free(hess, Hd, grad)
 
