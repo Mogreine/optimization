@@ -6,6 +6,7 @@ from src.hw2.oracle import Oracle
 from sklearn.datasets import load_svmlight_file
 from sklearn.linear_model import LogisticRegression
 from scipy.sparse import hstack
+import timeit
 
 
 a = np.array([-1000000000000, 2, 3])
@@ -18,12 +19,12 @@ def test_optimization():
     max_iter = int(1e4)
 
     its = []
-    for i in range(10):
+    for i in range(5):
         w_0 = np.random.normal(0, 1, oracle.features)
         # w_0 = np.zeros(oracle.features)
         # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
         # w_0 = np.ones(oracle.features)
-        w_opt, iters = newton_hess_free(oracle, w_0, line_search_method='brent_scipy', max_iter=max_iter, tol=1e-8)
+        w_opt, iters = newton_hess_free(oracle, w_0, line_search_method='wolfe', max_iter=max_iter, tol=1e-8)
         its.append(iters)
 
 
@@ -59,5 +60,14 @@ def test_shit():
     print(eig_vecs @ np.diagflat(eig_vals) @ eig_vecs.T)
 
 
+def bench():
+    x = np.random.normal(0, 1, 1000)
+    norm = lambda x: np.sqrt(x @ x)
+    print(timeit.timeit('import numpy as np; x = np.random.normal(0, 1, 100000); norm = lambda x: np.sqrt(x @ x); norm(x)', number=1000))
+    print(timeit.timeit('import numpy as np; x = np.random.normal(0, 1, 100000); norm = np.linalg.norm; norm(x)', number=1000))
+
+
+
 # test_shit()
 test_optimization()
+# bench()

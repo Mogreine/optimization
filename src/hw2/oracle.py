@@ -83,7 +83,7 @@ class Oracle:
         f_d = self.grad(w + eps * d)
         f_w = self.grad(w - eps * d)
 
-        fwd_hessian_true = (f_d - f_w) / (2 * eps)  # + eps / 2
+        fwd_hessian_true = (f_d - f_w) / (2 * eps)
         return fwd_hessian_true
 
     def fuse_value_grad(self, w):
@@ -105,7 +105,7 @@ class OracleTester:
         f_d = self.oracle.value(w + eps * d)
         f_w = self.oracle.value(w - eps * d)
 
-        fwd_grad_true = (f_d - f_w) / (2 * eps) # + eps / 2
+        fwd_grad_true = (f_d - f_w) / (2 * eps)
         fwd_grad_test = self.oracle.grad(w) @ d
 
         error = np.linalg.norm(fwd_grad_test - fwd_grad_true)

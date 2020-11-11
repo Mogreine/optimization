@@ -260,25 +260,36 @@ def solve_conj(A, b, Ax=None, tol=1e-8):
     return xk
 
 
-def solve_conj_hess_free_naive(Ax, b, tol=1e-8):
-    xk = np.ones(len(b))
+def solve_conj_hess_free_line_search(Hx, grad, tol=1e-8):
+    # в теории должен сойтись не больше чем за n, но гессиан может быть около сингулярным
+    norm = lambda x: np.linalg.norm(x)
+    max_iter = int(len(grad) * 1.2)
+    eps = min(0.5, np.sqrt(norm(grad))) * norm(grad)
+    zk = np.zeros(len(grad))
     # xk = np.random.normal(0, 1, len(b))
-    rk_free = Ax(xk) - b
-    rk = Ax(xk) - b
-    pk = -rk
-    k = 0
-    while np.linalg.norm(rk) > tol:
-    # while np.allclose(rk, zero):
+    rk = grad
+    dk = -rk
+    for k in range(max_iter):
+        dHd = dk @ Hx(dk)
+        if dHd < 0:
+            if k == 0:
+                zk = -grad
+            break
+
         rk_prod = rk @ rk
-        Apk = Ax(pk)
-        ak = rk_prod / (pk @ Apk)
-        xk = xk + ak * pk
-        rk = rk + ak * Apk
+        Hdk = Hx(dk)
+        ak = rk_prod / dHd
+        zk = zk + ak * dk
+        rk = rk + ak * Hdk
+
+        if norm(rk) < eps:
+            break
+
         bk = rk @ rk / rk_prod
-        pk = -rk + bk * pk
+        dk = -rk + bk * dk
         k += 1
     print(f'conj iters: {k}')
-    return xk
+    return zk / np.linalg.norm(zk)
 
 
 def solve_le(X, b, method='cholesky'):
@@ -332,11 +343,8 @@ def newton_hess_free(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=i
         if stop_criterion(grad, tol):
             break
 
-        hess = oracle.hessian(x_k)
-        hess = correct_hessian_addition(hess)
-        # хуево, надо сделать подругому
-        Hd = lambda d: oracle.hessian_vec_product(x_k, d) + d * 1e-4
-        p_k = -solve_conj_hess_free(hess, Hd, grad)
+        Hd = lambda d: oracle.hessian_vec_product(x_k, d)
+        p_k = solve_conj_hess_free_line_search(Hd, grad)
 
         alpha = line_search(oracle, x_k, p_k, is_newton=True, method=line_search_method, tol=1e-3)[0]
         if alpha is None:
