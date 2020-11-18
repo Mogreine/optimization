@@ -22,11 +22,10 @@ def make_oracle(path, format='libsvm'):
 class Oracle:
     def __init__(self, X, y):
         self._X = X.copy()
-        self._X = self._X.T
         self._y = y.copy()
 
-        self.features = self._X.shape[0]
-        self.samples = self._X.shape[1]
+        self.features = self._X.shape[1]
+        self.samples = self._X.shape[0]
         assert len(self._y.shape) == 1, "y should be a vector: len(y.shape) is not 1"
 
     @staticmethod
@@ -36,7 +35,7 @@ class Oracle:
     # returns vector
     def sigmoid_X(self, w: np.array) -> np.array:
         # return np.array([self.sigmoid_w(row, w) for row in self._X])
-        return self.sigmoid(self._X.T @ w)
+        return self.sigmoid(self._X @ w)
 
     # returns matrix D: d_ii = sig_w(x) * (1 - sig_w(x))
     def sigmoid_X_diag(self, w: np.array) -> np.ndarray:
@@ -57,10 +56,10 @@ class Oracle:
         return -(ylog + ylog2) / self.samples
 
     def grad(self, w):
-        return self._X @ (self.sigmoid_X(w) - self._y) / self.samples
+        return self._X.T @ (self.sigmoid_X(w) - self._y) / self.samples
 
     def hessian(self, w):
-        return self._X @ self.sigmoid_X_diag(w) @ self._X.T / self.samples
+        return self._X.T @ self.sigmoid_X_diag(w) @ self._X / self.samples
 
     def hessian_vec_product(self, w, d):
         eps = 1e-5
@@ -78,33 +77,3 @@ class Oracle:
 
     def fuse_value_grad_hessian_vec_product(self, w, d):
         return self.value(w), self.grad(w), self.hessian_vec_product(w, d)
-
-
-class OracleTester:
-    def __init__(self, oracle):
-        self.oracle = oracle
-
-    # kinda symmetric grad test
-    def test_grad(self, w, d, eps=1e-5):
-        f_d = self.oracle.value(w + eps * d)
-        f_w = self.oracle.value(w - eps * d)
-
-        fwd_grad_true = (f_d - f_w) / (2 * eps)
-        fwd_grad_test = self.oracle.grad(w) @ d
-
-        error = np.linalg.norm(fwd_grad_test - fwd_grad_true)
-        print(np.allclose(fwd_grad_test, fwd_grad_true))
-
-        return error
-
-    # kinda symmetric hessian test
-    def test_hessian(self, w, d, eps=1e-5):
-        f_d = self.oracle.grad(w + eps * d)
-        f_w = self.oracle.grad(w - eps * d)
-
-        fwd_hessian_true = (f_d - f_w) / (2 * eps) # + eps / 2
-        fwd_hessian_test = self.oracle.hessian(w) @ d
-
-        error = np.linalg.norm(fwd_hessian_test - fwd_hessian_true)
-
-        return error
