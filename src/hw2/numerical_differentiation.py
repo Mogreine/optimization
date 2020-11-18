@@ -1,6 +1,6 @@
 import numpy as np
 import scipy
-from src.hw2.oracle import make_oracle, OracleTester
+from src.hw2.oracle import make_oracle
 
 
 a = np.array([1, 2, 3])
@@ -10,7 +10,6 @@ X = np.array([*range(9)]).reshape((3, 3))
 # print(np.diagflat(a))
 
 oracle = make_oracle('data/a1a.txt')
-tester = OracleTester(oracle)
 
 
 def test_func(f, grad, w, d, tol=1e-8) -> bool:
