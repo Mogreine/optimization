@@ -21,10 +21,10 @@ def test_optimization():
     its = []
     for i in range(5):
         w_0 = np.random.normal(0, 1, oracle.features)
-        # w_0 = np.zeros(oracle.features)
-        # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
+        w_0 = np.zeros(oracle.features)
+        w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
         # w_0 = np.ones(oracle.features)
-        w_opt, iters = newton_hess_free(oracle, w_0, line_search_method='wolfe', max_iter=max_iter, tol=1e-8)
+        w_opt, iters = newton(oracle, w_0, line_search_method='brent', max_iter=max_iter, tol=1e-8)
         its.append(iters)
 
 
@@ -47,12 +47,14 @@ def test_optimization():
     clf.fit(X, y)
     w_sk = clf.coef_[0]
     # print(w_sk)
-    print(f"mine: {oracle.value(w_opt)}")
+    print(f"mine   : {oracle.value(w_opt)}")
     print(f"sklearn: {oracle.value(w_sk)}")
 
 
 def test_shit():
     X = np.array([*range(9)]).reshape((3, 3))
+    a = np.array([1, 2, 3])
+    print(np.diag(a))
     X = X + X.T
     eig_vals, eig_vecs = np.linalg.eigh(X)
     print(eig_vecs)

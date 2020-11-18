@@ -23,30 +23,15 @@ class Oracle:
     def __init__(self, X, y):
         self._X = X.copy()
         self._X = self._X.T
-        self._y = np.array(y, copy=True)
-        self.lip_const = None
+        self._y = y.copy()
 
         self.features = self._X.shape[0]
         self.samples = self._X.shape[1]
         assert len(self._y.shape) == 1, "y should be a vector: len(y.shape) is not 1"
 
-    def calc_lipschitz(self):
-        if self.lip_const is None:
-            svd_vals = svds(self._X, k=1, which='LM', return_singular_vectors=True)[1]
-            max_svd_val = svd_vals[0]
-            self.lip_const = max_svd_val ** 2 / self.samples ** 2
-
-            self.lip_const = norm(self._X @ self._X.T) ** 2 / self.samples ** 2
-
-            self.lip_const = norm(self._X) / 2 / self.samples
-        return self.lip_const
-
     @staticmethod
     def sigmoid(x: np.array):
         return expit(x)
-
-    def sigmoid_w(self, x: np.array, w: np.array):
-        return self.sigmoid(w.dot(x))
 
     # returns vector
     def sigmoid_X(self, w: np.array) -> np.array:
@@ -57,8 +42,7 @@ class Oracle:
     def sigmoid_X_diag(self, w: np.array) -> np.ndarray:
         sigs = self.sigmoid_X(w)
         sigs = sigs * (1 - sigs)
-        # return np.diagflat([sig * (1 - sig) for sig in sigs])
-        return diags(sigs)
+        return np.diagflat(sigs)
 
     def value(self, w):
         assert len(w.shape) == 1, "x should be a vector: len(x.shape) is not 1"
@@ -76,10 +60,10 @@ class Oracle:
         return self._X @ (self.sigmoid_X(w) - self._y) / self.samples
 
     def hessian(self, w):
-        return (self._X @ self.sigmoid_X_diag(w) @ self._X.T / self.samples).toarray()
+        return self._X @ self.sigmoid_X_diag(w) @ self._X.T / self.samples
 
     def hessian_vec_product(self, w, d):
-        eps = 1e-8
+        eps = 1e-5
         f_d = self.grad(w + eps * d)
         f_w = self.grad(w - eps * d)
 
@@ -101,7 +85,7 @@ class OracleTester:
         self.oracle = oracle
 
     # kinda symmetric grad test
-    def test_grad(self, w, d, eps=1e-8):
+    def test_grad(self, w, d, eps=1e-5):
         f_d = self.oracle.value(w + eps * d)
         f_w = self.oracle.value(w - eps * d)
 
@@ -114,7 +98,7 @@ class OracleTester:
         return error
 
     # kinda symmetric hessian test
-    def test_hessian(self, w, d, eps=1e-8):
+    def test_hessian(self, w, d, eps=1e-5):
         f_d = self.oracle.grad(w + eps * d)
         f_w = self.oracle.grad(w - eps * d)
 

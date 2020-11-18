@@ -15,7 +15,7 @@ tester = OracleTester(oracle)
 
 def test_derivative(f):
     errors = []
-    for i in range(100):
+    for i in range(50):
         w = np.random.normal(0, 1, oracle.features)
         w /= np.linalg.norm(w)
 
