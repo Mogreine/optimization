@@ -2,8 +2,9 @@ import numpy as np
 from scipy.linalg import eigh as scipy_eigh
 from scipy.linalg import eig as scipy_eig
 from scipy.sparse.linalg import inv as sparse_inv
-from scipy.optimize import line_search as scipy_line_search, brent as scipy_brent
+from scipy.optimize import line_search as scipy_line_search, brent as brent_sc
 from scipy.sparse.linalg import norm, svds, eigsh
+import time
 
 
 def golden_section(func, a: float, b: float, eps: float = 1e-8):
@@ -28,7 +29,7 @@ def golden_section(func, a: float, b: float, eps: float = 1e-8):
             x2 = r - K * (r - l)
             f2 = func(x2)
         iterations += 1
-    return (r + l) / 2
+    return (r + l) / 2, iterations + 2
 
 
 def brent(oracle, a: float, b: float, eps: float = 1e-3):
@@ -37,7 +38,7 @@ def brent(oracle, a: float, b: float, eps: float = 1e-3):
     d, d2 = 0, 0
     fx = oracle(x)
     fw, fv = fx, fx
-    # it = []
+    oracle_calls = 1
 
     for i in range(50):
         mid = (a + b) / 2
@@ -45,6 +46,7 @@ def brent(oracle, a: float, b: float, eps: float = 1e-3):
         tol2 = tol1 * 2
         if abs(x - mid) < tol2 - (b - a) / 2:
             break
+        oracle_calls += 1
         p, q, r = 0, 0, 0
         if abs(d2) > tol1:
             r = (x - w) * (fx - fv)
@@ -102,7 +104,7 @@ def brent(oracle, a: float, b: float, eps: float = 1e-3):
                 v = u
                 fv = fu
         # it.append(x)
-    return x
+    return x, oracle_calls
 
 
 # TODO: Доделать метод правильно, чтобы начинал с 1 и шел либо в большую сторону, либо в меньшую
@@ -124,25 +126,38 @@ def armijo_vasya(f, grad, xk, pk, is_newton=False):
     return alpha, 1
 
 
+def brent_scipy(f_line, tol=1e-8):
+    res = brent_sc(f_line, tol=tol, full_output=True)
+    return res[0], res[-1]
+
+
 def armijo(f, grad, xk, pk, is_newton=False):
     alpha = 1 if is_newton else 100
     po = 0.8
     c = 0.0001
     xk_grad = grad(xk)
+    xk_val = f(xk)
+    oracle_calls = 2
 
     # armijo condition
-    while f(xk + alpha * pk) > f(xk) + c * alpha * xk_grad @ pk:
+    while f(xk + alpha * pk) > xk_val + c * alpha * xk_grad @ pk:
         alpha *= po
+        oracle_calls += 1
 
-    return alpha, 1
+    return alpha, oracle_calls
 
 
 def lip_const(f, grad, xk, pk):
     L = 0.01
-    grad_xk = grad(xk)
-    while f(xk + 1 / L * pk) > f(xk) + 1 / L * grad_xk @ pk + 1 / 2 / L * pk @ pk:
+    xk_grad = grad(xk)
+    xk_val = f(xk)
+    oracle_calls = 2
+
+    while f(xk + 1 / L * pk) > xk_val + 1 / L * xk_grad @ pk + 1 / 2 / L * pk @ pk:
         L *= 2
-    return 2 / L
+        oracle_calls += 1
+
+    return 2 / L, oracle_calls
 
 
 def is_positive(X):
@@ -180,33 +195,44 @@ def correct_hessian_eigvalues(H):
 # TODO: сделать такой же формат вывода, как и у scipy_line_search
 def line_search(oracle, x_k, p_k=None, is_newton=False, method='wolf', tol=1e-3):
     p_k = p_k if p_k is not None else -oracle.grad(x_k)
+    alpha, oracle_calls = 1, 0
     if method == 'brent' or method == 'gs' or method == 'brent_scipy':
-        l, r = 0, 1
+        l, r = 0, 1 if is_newton else 100
         f_line = lambda x: oracle.value(x_k + x * p_k)
 
         if method == 'brent':
-            return brent(f_line, l, r, eps=tol), 0
+            alpha, oracle_calls = brent(f_line, l, r, eps=tol)
         if method == 'brent_scipy':
-            return scipy_brent(f_line, tol=tol), 0
+            alpha, oracle_calls = brent_scipy(f_line, tol=tol)
         if method == 'gs':
-            return golden_section(f_line, l, r, eps=tol), 0
+            alpha, oracle_calls = golden_section(f_line, l, r, eps=tol)
     if method == 'wolfe':
-        return scipy_line_search(oracle.value, oracle.grad, x_k, p_k)
+        alpha, value_calls, grad_calls = scipy_line_search(oracle.value, oracle.grad, x_k, p_k)[:3]
+        # look at this shit
+        oracle_calls = value_calls
     if method == 'armijo':
-        return armijo(oracle.value, oracle.grad, x_k, p_k, is_newton=is_newton)
+        alpha, oracle_calls = armijo(oracle.value, oracle.grad, x_k, p_k, is_newton=is_newton)
     if method == 'lip':
-        return lip_const(oracle.value, oracle.grad, x_k, p_k), 1
+        alpha, oracle_calls = lip_const(oracle.value, oracle.grad, x_k, p_k)
+    return alpha, oracle_calls
 
 
 def gradient_descent(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
+    start_time = time.time()
     iters = 0
     x0_grad = oracle.grad(x0)
+
+    oracle_calls_arr = [0]
+    elapsed_time_arr = [0]
+    iters_arr = [0]
+    rk_arr = [oracle.value(x0)]
 
     def stop_criterion(x, tol):
         x_grad = oracle.grad(x)
         x_grad_norm = np.linalg.norm(x_grad)
         x0_grad_norm = np.linalg.norm(x0_grad)
-        return x_grad_norm ** 2 / x0_grad_norm ** 2 < tol
+        rk = x_grad_norm ** 2 / x0_grad_norm ** 2
+        return rk < tol
 
     x_k = x0.copy()
     while iters < max_iter:
@@ -214,17 +240,23 @@ def gradient_descent(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=i
         p_k = -grad
         # f_line = lambda x: oracle.value(x_k - x * grad)
 
-        alpha = line_search(oracle, x_k, p_k, method=line_search_method, tol=1e-3)[0]
+        alpha, oracle_calls_ls = line_search(oracle, x_k, p_k, method=line_search_method, tol=1e-8)
         if alpha is None:
             alpha = 1
 
         x_k = x_k + alpha * p_k
 
+        elapsed_time_arr.append(time.time() - start_time)
+        oracle_calls_arr.append(oracle_calls_arr[-1] + 1 + oracle_calls_ls)
+        iters_arr.append(iters_arr[-1] + 1)
+
+        rk_arr.append(oracle.value(x_k))
         if stop_criterion(x_k, tol):
             break
-        print(f"{iters}: {oracle.value(x_k)}; a: {alpha}")
+        # print(f"{iters_arr[-1]}: {oracle.value(x_k)}; a: {alpha}")
         iters += 1
-    return x_k, iters
+
+    return x_k, rk_arr, elapsed_time_arr, oracle_calls_arr, iters_arr
 
 
 # only for p.d. matrices
