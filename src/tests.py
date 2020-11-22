@@ -100,10 +100,10 @@ def run_tests(oracle, w_opt, optimizer='newton', line_search_methods=None, max_i
     return res
 
 
-def test_optimization(path):
+def test_optimization(path, dataset_name=None):
     w_opt = get_w_true(path)
-    oracle = make_oracle(path)
-    res = run_tests(oracle, w_opt, optimizer='newton', line_search_methods=None, max_iter=1000, tol=1e-16)
+    oracle = make_oracle(path, dataset_name=dataset_name)
+    res = run_tests(oracle, w_opt, optimizer='gd', line_search_methods=None, max_iter=10000, tol=1e-8)
     plot(res)
 
 
@@ -118,18 +118,8 @@ def test_shit():
     print(eig_vecs @ np.diagflat(eig_vals) @ eig_vecs.T)
 
 
-def bench():
-    x = np.random.normal(0, 1, 1000)
-    norm = lambda x: np.sqrt(x @ x)
-    print(timeit.timeit(
-        'import numpy as np; x = np.random.normal(0, 1, 100000); norm = lambda x: np.sqrt(x @ x); norm(x)',
-        number=1000))
-    print(timeit.timeit('import numpy as np; x = np.random.normal(0, 1, 100000); norm = np.linalg.norm; norm(x)',
-                        number=1000))
-
-
-path = 'hw2/data/a1a.txt'
+path = 'hw2/data/cancer.txt'
 
 # test_shit()
-test_optimization(path)
+test_optimization(path, 'cancer')
 # bench()

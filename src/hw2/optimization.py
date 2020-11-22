@@ -7,7 +7,7 @@ from scipy.sparse.linalg import norm, svds, eigsh
 import time
 
 
-def golden_section(func, a: float, b: float, eps: float = 1e-8):
+def golden_section(func, a: float, b: float, eps: float = 1e-8, max_iter=50):
     l, r = a, b
     K = 0.381966
     x1 = l + K * (r - l)
@@ -15,7 +15,7 @@ def golden_section(func, a: float, b: float, eps: float = 1e-8):
     f1 = func(x1)
     f2 = func(x2)
     iterations = 0
-    while abs(r - l) > eps:
+    while abs(r - l) > eps and iterations < max_iter:
         if f1 < f2:
             r = x2
             f2 = f1
@@ -127,7 +127,7 @@ def armijo_vasya(f, grad, xk, pk, is_newton=False):
 
 
 def brent_scipy(f_line, tol=1e-8):
-    res = brent_sc(f_line, tol=tol, full_output=True)
+    res = brent_sc(f_line, tol=tol, full_output=True, maxiter=30)
     return res[0], res[-1]
 
 
@@ -293,8 +293,8 @@ def gradient_descent(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=i
         elapsed_time_arr.append(time.time() - start_time)
         oracle_calls_arr.append(oracle_calls_arr[-1] + 1 + oracle_calls_ls)
         iters_arr.append(iters_arr[-1] + 1)
-
         rk_arr.append(oracle.value(x_k))
+
         if stop_criterion(x_k, tol):
             break
         # print(f"{iters_arr[-1]}: {oracle.value(x_k)}; a: {alpha}")

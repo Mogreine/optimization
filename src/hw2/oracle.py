@@ -1,21 +1,31 @@
 import numpy as np
 import scipy
 from sklearn.datasets import load_svmlight_file
+from pandas import read_csv
 from scipy.sparse import diags
 from scipy.sparse import hstack
 from scipy.special import expit
 from scipy.sparse.linalg import svds, norm
 
 
-def make_oracle(path, format='libsvm'):
+def make_oracle(dataset_path, dataset_name=None, format='libsvm'):
     if format == 'libsvm':
-        X, y = load_svmlight_file(path)
+        X, y = load_svmlight_file(dataset_path)
         ones_col = np.ones((X.shape[0], 1))
         X = hstack((X, ones_col))
 
-        # initially y = [-1, +1]^n, we map it into y = [0, 1]^n
-        y = (y + 1) // 2
+        if dataset_name == 'a1a':
+            # initially y = [-1, +1]^n, we map it into y = [0, 1]^n
+            y = (y + 1) // 2
+        if dataset_name == 'cancer':
+            # initially y = [2, 4]^n, we map it into y = [0, 1]^n
+            y = y // 2 - 1
 
+        return Oracle(X, y)
+    else:
+        X, y = read_csv(dataset_path, delimiter='\t')
+        ones_col = np.ones((X.shape[0], 1))
+        X = hstack((X, ones_col))
         return Oracle(X, y)
 
 
@@ -48,18 +58,18 @@ class Oracle:
         sig_x = self.sigmoid_X(w)
 
         # sum of y_i*log(sig_w(x_i))
-        ylog = np.log(sig_x + 1e-12) @ self._y
+        ylog = np.log(sig_x + 1e-20) @ self._y
 
         # sum of (1 - y_i)*log(1 - sig_w(x_i))
-        ylog2 = (1 - self._y) @ np.log(1 - sig_x + 1e-12)
+        ylog2 = (1 - self._y) @ np.log(1 - sig_x + 1e-20)
 
         return -(ylog + ylog2) / self.samples
 
     def grad(self, w):
-        return self._X.T @ (self.sigmoid_X(w) - self._y) / self.samples
+        return 1 / self.samples * self._X.T @ (self.sigmoid_X(w) - self._y)
 
     def hessian(self, w):
-        return self._X.T @ self.sigmoid_X_diag(w) @ self._X / self.samples
+        return 1 / self.samples * self._X.T @ self.sigmoid_X_diag(w) @ self._X
 
     def hessian_vec_product(self, w, d):
         eps = 1e-5
