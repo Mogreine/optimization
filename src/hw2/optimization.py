@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.linalg import eigh as scipy_eigh
-from scipy.linalg import eig as scipy_eig
+from scipy.linalg import eig as scipy_eig, cho_solve, cho_factor, solve_triangular
 from scipy.sparse.linalg import inv as sparse_inv
 from scipy.optimize import line_search as scipy_line_search, brent as brent_sc
 from scipy.sparse.linalg import norm, svds, eigsh
@@ -160,6 +160,30 @@ def lip_const(f, grad, xk, pk):
     return 2 / L, oracle_calls
 
 
+def line_search(oracle, x_k, p_k=None, is_newton=False, method='wolf', tol=1e-3):
+    p_k = p_k if p_k is not None else -oracle.grad(x_k)
+    alpha, oracle_calls = 1, 0
+    if method == 'brent' or method == 'gs' or method == 'brent_scipy':
+        l, r = 0, 1 if is_newton else 100
+        f_line = lambda x: oracle.value(x_k + x * p_k)
+
+        if method == 'brent':
+            alpha, oracle_calls = brent(f_line, l, r, eps=tol)
+        if method == 'brent_scipy':
+            alpha, oracle_calls = brent_scipy(f_line, tol=tol)
+        if method == 'gs':
+            alpha, oracle_calls = golden_section(f_line, l, r, eps=tol)
+    if method == 'wolfe':
+        alpha, value_calls, grad_calls = scipy_line_search(oracle.value, oracle.grad, x_k, p_k)[:3]
+        # look at this shit
+        oracle_calls = value_calls
+    if method == 'armijo':
+        alpha, oracle_calls = armijo(oracle.value, oracle.grad, x_k, p_k, is_newton=is_newton)
+    if method == 'lip':
+        alpha, oracle_calls = lip_const(oracle.value, oracle.grad, x_k, p_k)
+    return alpha, oracle_calls
+
+
 def is_positive(X):
     try:
         L = np.linalg.cholesky(X)
@@ -192,78 +216,15 @@ def correct_hessian_eigvalues(H):
     return eig_vec @ np.diagflat(eig_val) @ eig_vec.T
 
 
-# TODO: сделать такой же формат вывода, как и у scipy_line_search
-def line_search(oracle, x_k, p_k=None, is_newton=False, method='wolf', tol=1e-3):
-    p_k = p_k if p_k is not None else -oracle.grad(x_k)
-    alpha, oracle_calls = 1, 0
-    if method == 'brent' or method == 'gs' or method == 'brent_scipy':
-        l, r = 0, 1 if is_newton else 100
-        f_line = lambda x: oracle.value(x_k + x * p_k)
-
-        if method == 'brent':
-            alpha, oracle_calls = brent(f_line, l, r, eps=tol)
-        if method == 'brent_scipy':
-            alpha, oracle_calls = brent_scipy(f_line, tol=tol)
-        if method == 'gs':
-            alpha, oracle_calls = golden_section(f_line, l, r, eps=tol)
-    if method == 'wolfe':
-        alpha, value_calls, grad_calls = scipy_line_search(oracle.value, oracle.grad, x_k, p_k)[:3]
-        # look at this shit
-        oracle_calls = value_calls
-    if method == 'armijo':
-        alpha, oracle_calls = armijo(oracle.value, oracle.grad, x_k, p_k, is_newton=is_newton)
-    if method == 'lip':
-        alpha, oracle_calls = lip_const(oracle.value, oracle.grad, x_k, p_k)
-    return alpha, oracle_calls
-
-
-def gradient_descent(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
-    start_time = time.time()
-    iters = 0
-    x0_grad = oracle.grad(x0)
-
-    oracle_calls_arr = [0]
-    elapsed_time_arr = [0]
-    iters_arr = [0]
-    rk_arr = [oracle.value(x0)]
-
-    def stop_criterion(x, tol):
-        x_grad = oracle.grad(x)
-        x_grad_norm = np.linalg.norm(x_grad)
-        x0_grad_norm = np.linalg.norm(x0_grad)
-        rk = x_grad_norm ** 2 / x0_grad_norm ** 2
-        return rk < tol
-
-    x_k = x0.copy()
-    while iters < max_iter:
-        grad = oracle.grad(x_k)
-        p_k = -grad
-        # f_line = lambda x: oracle.value(x_k - x * grad)
-
-        alpha, oracle_calls_ls = line_search(oracle, x_k, p_k, method=line_search_method, tol=1e-8)
-        if alpha is None:
-            alpha = 1
-
-        x_k = x_k + alpha * p_k
-
-        elapsed_time_arr.append(time.time() - start_time)
-        oracle_calls_arr.append(oracle_calls_arr[-1] + 1 + oracle_calls_ls)
-        iters_arr.append(iters_arr[-1] + 1)
-
-        rk_arr.append(oracle.value(x_k))
-        if stop_criterion(x_k, tol):
-            break
-        # print(f"{iters_arr[-1]}: {oracle.value(x_k)}; a: {alpha}")
-        iters += 1
-
-    return x_k, rk_arr, elapsed_time_arr, oracle_calls_arr, iters_arr
-
-
 # only for p.d. matrices
 def solve_le_cholesky(X, b):
-    L = np.linalg.cholesky(X)
-    y = np.linalg.solve(L, b)
-    x = np.linalg.solve(L.conj().T, y)
+    # L = np.linalg.cholesky(X)
+    # y = solve_triangular(L, b)
+    # x = solve_triangular(L.conj().T, y)
+
+    L = cho_factor(X, check_finite=False)
+    x = cho_solve(L, b, check_finite=False)
+
     return x
 
 
@@ -301,32 +262,84 @@ def solve_le(X, b, method='cholesky'):
         return solve_conj(X, b)
 
 
-def newton(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
+def gradient_descent(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
+    start_time = time.time()
     iters = 0
+    x0_grad = oracle.grad(x0)
+
+    oracle_calls_arr = [0]
+    elapsed_time_arr = [0]
+    iters_arr = [0]
+    rk_arr = [oracle.value(x0)]
 
     def stop_criterion(x, tol):
-        return np.linalg.norm(x) ** 2 < tol
+        x_grad = oracle.grad(x)
+        x_grad_norm = np.linalg.norm(x_grad)
+        x0_grad_norm = np.linalg.norm(x0_grad)
+        rk = x_grad_norm ** 2 / x0_grad_norm ** 2
+        return rk < tol
 
     x_k = x0.copy()
     while iters < max_iter:
         grad = oracle.grad(x_k)
+        p_k = -grad
+
+        alpha, oracle_calls_ls = line_search(oracle, x_k, p_k, method=line_search_method, tol=1e-8)
+        if alpha is None:
+            alpha = 1
+
+        x_k = x_k + alpha * p_k
+
+        elapsed_time_arr.append(time.time() - start_time)
+        oracle_calls_arr.append(oracle_calls_arr[-1] + 1 + oracle_calls_ls)
+        iters_arr.append(iters_arr[-1] + 1)
+
+        rk_arr.append(oracle.value(x_k))
+        if stop_criterion(x_k, tol):
+            break
+        # print(f"{iters_arr[-1]}: {oracle.value(x_k)}; a: {alpha}")
+        iters += 1
+
+    return x_k, rk_arr, elapsed_time_arr, oracle_calls_arr, iters_arr
+
+
+def newton(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
+    start_time = time.time()
+    iters = 0
+
+    x_k = x0.copy()
+    oracle_calls_arr = [0]
+    elapsed_time_arr = [0]
+    iters_arr = [0]
+    rk_arr = [oracle.value(x0)]
+
+    def stop_criterion(x, tol):
+        return np.linalg.norm(x) ** 2 < tol
+
+    while iters < max_iter:
+        grad, hess = oracle.fuse_grad_hessian(x_k)
 
         if stop_criterion(grad, tol):
             break
 
-        hess = oracle.hessian(x_k)
         hess = correct_hessian_addition(hess)
         p_k = -solve_le(hess, grad, method='cholesky')
 
-        alpha = line_search(oracle, x_k, p_k, is_newton=True, method=line_search_method, tol=1e-8)[0]
+        alpha, oracle_calls_ls = line_search(oracle, x_k, p_k, is_newton=False, method=line_search_method, tol=1e-8)
         if alpha is None:
             alpha = 1
 
         x_k = x_k + alpha * p_k
 
         print(f"{iters}: {oracle.value(x_k)}; a: {alpha}")
+
+        elapsed_time_arr.append(time.time() - start_time)
+        oracle_calls_arr.append(oracle_calls_arr[-1] + oracle_calls_ls + 1)
+        iters_arr.append(iters_arr[-1] + 1)
+        rk_arr.append(oracle.value(x_k))
+
         iters += 1
-    return x_k, iters
+    return x_k, rk_arr, elapsed_time_arr, oracle_calls_arr, iters_arr
 
 
 def newton_hess_free(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=int(1e4)):
@@ -340,14 +353,15 @@ def newton_hess_free(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=i
         rk = grad
         dk = -rk
         for k in range(max_iter):
-            dHd = dk @ Hx(dk)
-            if dHd < 0:
+            Hdk = Hx(dk)
+            dHd = dk @ Hdk
+
+            if dHd < tol:
                 if k == 0:
                     zk = -grad
                 break
 
             rk_prod = rk @ rk
-            Hdk = Hx(dk)
             ak = rk_prod / dHd
             zk = zk + ak * dk
             rk = rk + ak * Hdk
@@ -359,13 +373,19 @@ def newton_hess_free(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=i
             bk = rk @ rk / rk_prod
             dk = -rk + bk * dk
             k += 1
-        print(f'conj iters: {k}')
-        return zk# / np.linalg.norm(zk)
-
-    iters = 0
+        # print(f'conj iters: {k}')
+        return zk, k
 
     def stop_criterion(x, tol):
         return np.linalg.norm(x) ** 2 < tol
+
+    start_time = time.time()
+    iters = 0
+
+    oracle_calls_arr = [0]
+    elapsed_time_arr = [0]
+    iters_arr = [0]
+    rk_arr = [oracle.value(x0)]
 
     x_k = x0.copy()
     while iters < max_iter:
@@ -375,14 +395,19 @@ def newton_hess_free(oracle, x0, line_search_method='wolf', tol=1e-8, max_iter=i
             break
 
         Hd = lambda d: oracle.hessian_vec_product(x_k, d)
-        p_k = solve_conj_hess_free_line_search(Hd, grad)
+        p_k, hess_vec_prod_calls = solve_conj_hess_free_line_search(Hd, grad)
 
-        alpha = line_search(oracle, x_k, p_k, is_newton=True, method=line_search_method, tol=1e-8)[0]
+        alpha, oracle_calls_ls = line_search(oracle, x_k, p_k, is_newton=False, method=line_search_method, tol=1e-8)
         if alpha is None:
             alpha = 1
 
         x_k = x_k + alpha * p_k
 
-        print(f"{iters}: {oracle.value(x_k)}; a: {alpha}")
+        # print(f"{iters}: {oracle.value(x_k)}; a: {alpha}")
+
+        elapsed_time_arr.append(time.time() - start_time)
+        oracle_calls_arr.append(oracle_calls_arr[-1] + oracle_calls_ls + hess_vec_prod_calls + 1)
+        iters_arr.append(iters_arr[-1] + 1)
+        rk_arr.append(oracle.value(x_k))
         iters += 1
-    return x_k, iters
+    return x_k, rk_arr, elapsed_time_arr, oracle_calls_arr, iters_arr

@@ -7,13 +7,27 @@ from sklearn.datasets import load_svmlight_file
 from sklearn.linear_model import LogisticRegression
 from scipy.sparse import hstack
 import timeit
-import numpy as np
 import plotly.graph_objs as go
 import plotly
 
 
-a = np.array([-1000000000000, 2, 3])
-b = np.array([1, 1, 1])
+def get_w_true(path):
+    X, y = load_svmlight_file(path)
+    ones_col = np.ones((X.shape[0], 1))
+    X = hstack((X, ones_col))
+
+    # initially y = [-1, +1]^n, we map it into y = [0, 1]^n
+    y = (y + 1) // 2
+
+    clf = LogisticRegression(penalty='none',
+                             tol=1e-8,
+                             max_iter=10000,
+                             random_state=1,
+                             fit_intercept=False
+                             )
+    clf.fit(X, y)
+    w_sk = clf.coef_[0]
+    return w_sk
 
 
 def _plot(data, graph_name):
@@ -32,8 +46,6 @@ def _plot(data, graph_name):
         'lip': {'color': 'rgba(0, 0, 0, 0.8)'}
     }
     for method_name, method_data in data.items():
-        w_opt, rk_arr, elapsed_time_arr, oracle_calls_arr, iters_arr = method_data
-
         traces.append(
             go.Scatter(
                 x=method_data[ind + 2],
@@ -60,49 +72,38 @@ def plot(data: dict, graph=('time', 'calls', 'iters')):
         _plot(data, graph_name)
 
 
-def run_tests(oracle, w_opt, line_search_methods=None, max_iter=10000, n_tests=1):
-    line_search_methods = ['gs', 'brent_scipy', 'armijo', 'wolfe'] if line_search_methods is None else line_search_methods
-    time = []
-    rk = []
+def run_tests(oracle, w_opt, optimizer='newton', line_search_methods=None, max_iter=10000, tol=1e-16):
+    line_search_methods = ['gs', 'brent_scipy', 'armijo', 'wolfe', 'lip'] if line_search_methods is None \
+                          else line_search_methods
+    if optimizer != 'gd' and 'lip' in line_search_methods:
+        line_search_methods.remove('lip')
+    optimizers = {
+        'gd': gradient_descent,
+        'newton': newton,
+        'hfn': newton_hess_free
+    }
+
     res = {}
     for method in line_search_methods:
-        w_0 = np.random.normal(0, 1, oracle.features)
-        # w_0 = np.zeros(oracle.features)
+        w_0 = np.zeros(oracle.features)
+        # w_0 = np.random.normal(0, 1, oracle.features)
         # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
         # w_0 = np.ones(oracle.features)
-        w_opt, rk_arr, elapsed_time_arr, oracle_calls_arr, iters_arr = gradient_descent(oracle,
-                                                                                        w_0,
-                                                                                        line_search_method=method,
-                                                                                        max_iter=max_iter,
-                                                                                        tol=1e-8)
-        print(f'{method}: {iters_arr[-1]}, {oracle.value(w_opt)}')
-        res[method] = (w_opt, np.log10(np.abs(rk_arr - oracle.value(w_opt))), elapsed_time_arr, oracle_calls_arr, iters_arr)
+        w_pred, rk_arr, elapsed_time_arr, oracle_calls_arr, iters_arr = optimizers[optimizer](oracle,
+                                                                                              w_0,
+                                                                                              line_search_method=method,
+                                                                                              max_iter=max_iter,
+                                                                                              tol=tol)
+        print(f'{method}: {iters_arr[-1]}, {oracle.value(w_pred)}')
+        rk_arr = np.log10(np.abs(rk_arr - oracle.value(w_opt)))
+        res[method] = (w_pred, rk_arr, elapsed_time_arr, oracle_calls_arr, iters_arr)
     return res
 
 
-def get_w_true():
-    X, y = load_svmlight_file('hw2/data/a1a.txt')
-    ones_col = np.ones((X.shape[0], 1))
-    X = hstack((X, ones_col))
-
-    # initially y = [-1, +1]^n, we map it into y = [0, 1]^n
-    y = (y + 1) // 2
-
-    clf = LogisticRegression(penalty='none',
-                             tol=1e-8,
-                             max_iter=10000,
-                             random_state=1,
-                             fit_intercept=False
-                             )
-    clf.fit(X, y)
-    w_sk = clf.coef_[0]
-    return w_sk
-
-
-def test_optimization():
-    w_opt = get_w_true()
-    oracle = make_oracle('hw2/data/a1a.txt')
-    res = run_tests(oracle, w_opt, line_search_methods=None, max_iter=10000)
+def test_optimization(path):
+    w_opt = get_w_true(path)
+    oracle = make_oracle(path)
+    res = run_tests(oracle, w_opt, optimizer='newton', line_search_methods=None, max_iter=1000, tol=1e-16)
     plot(res)
 
 
@@ -120,11 +121,15 @@ def test_shit():
 def bench():
     x = np.random.normal(0, 1, 1000)
     norm = lambda x: np.sqrt(x @ x)
-    print(timeit.timeit('import numpy as np; x = np.random.normal(0, 1, 100000); norm = lambda x: np.sqrt(x @ x); norm(x)', number=1000))
-    print(timeit.timeit('import numpy as np; x = np.random.normal(0, 1, 100000); norm = np.linalg.norm; norm(x)', number=1000))
+    print(timeit.timeit(
+        'import numpy as np; x = np.random.normal(0, 1, 100000); norm = lambda x: np.sqrt(x @ x); norm(x)',
+        number=1000))
+    print(timeit.timeit('import numpy as np; x = np.random.normal(0, 1, 100000); norm = np.linalg.norm; norm(x)',
+                        number=1000))
 
 
+path = 'hw2/data/a1a.txt'
 
 # test_shit()
-test_optimization()
+test_optimization(path)
 # bench()

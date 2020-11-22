@@ -77,3 +77,9 @@ class Oracle:
 
     def fuse_value_grad_hessian_vec_product(self, w, d):
         return self.value(w), self.grad(w), self.hessian_vec_product(w, d)
+
+    def fuse_grad_hessian(self, w):
+        return self.grad(w), self.hessian(w)
+
+    def fuse_grad_hessian_vec_product(self, w, d):
+        return self.grad(w), self.hessian_vec_product(w, d)
