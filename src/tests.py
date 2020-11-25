@@ -14,14 +14,7 @@ import plotly
 from typing import List
 
 
-def get_w_true(path):
-    X, y = load_svmlight_file(path)
-    ones_col = np.ones((X.shape[0], 1))
-    X = hstack((X, ones_col))
-
-    # initially y = [-1, +1]^n, we map it into y = [0, 1]^n
-    y = (y + 1) // 2
-
+def get_w_true(X, y):
     clf = LogisticRegression(penalty='none',
                              tol=1e-8,
                              max_iter=10000,
@@ -88,9 +81,9 @@ def run_tests(oracle, w_opt, optimizer: Optimizer, line_search_methods: List[Lin
     res = {}
     for method, name in zip(line_search_methods, line_search_method_names):
         w_0 = np.zeros(oracle.features)
-        w_0 = np.random.normal(0, 1, oracle.features)
+        # w_0 = np.random.normal(0, 1, oracle.features)
         # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
-        # w_0 = np.ones(oracle.features)
+        # w_0 = np.ones(oracle.features) * 2
         w_pred = optimizer.optimize(w_0,
                                     line_search=method,
                                     max_iter=max_iter,
@@ -106,8 +99,8 @@ def run_tests(oracle, w_opt, optimizer: Optimizer, line_search_methods: List[Lin
 def test_optimization():
     path = 'hw2/data/a1a.txt'
     dataset_name = 'a1a'
-    w_opt = get_w_true(path)
-    oracle = make_oracle(path, dataset_name=dataset_name)
+    oracle = make_oracle(path, dataset_name=dataset_name, format='libsvm')
+    w_opt = get_w_true(oracle._X, oracle._y)
 
     optimizer_gd = GradientDescent(oracle)
     optimizer_newton = Newton(oracle, solve='cholesky')
@@ -124,6 +117,52 @@ def test_optimization():
     plot(res)
 
 
+def run_tests2(oracle, w_opt, optimizers: List[Optimizer], line_search_methods: List[LineSearchOptimizer],
+               line_search_method_names: List, max_iter=10000, tol=1e-16, verbose=0):
+    res = {}
+    for method_gl, method_ls, name in zip(optimizers, line_search_methods, line_search_method_names):
+        w_0 = np.zeros(oracle.features)
+        # w_0 = np.random.normal(0, 1, oracle.features)
+        # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
+        # w_0 = np.ones(oracle.features) * 2
+        w_pred = method_gl.optimize(w_0,
+                                    line_search=method_ls,
+                                    max_iter=max_iter,
+                                    tol=tol,
+                                    verbose=verbose)
+        rk_arr, elapsed_time_arr, oracle_calls_arr, iters_arr = method_gl.get_data()
+        print(f'{name}: {iters_arr[-1]}, {oracle.value(w_pred)}')
+        rk_arr = np.log10(np.abs(rk_arr - oracle.value(w_opt)))
+        res[name] = (w_pred, rk_arr, elapsed_time_arr, oracle_calls_arr, iters_arr)
+    return res
+
+
+def compare_methods():
+    path = 'hw2/data/a1a.txt'
+    dataset_name = 'a1a'
+    oracle = make_oracle(path, dataset_name=dataset_name, format='libsvm')
+    w_opt = get_w_true(oracle._X, oracle._y)
+
+    global_methods = [
+        GradientDescent(oracle),
+        Newton(oracle, solve='cholesky'),
+        HFN(oracle)
+    ]
+    ls_methods = [
+        Armijo(),
+        Wolfe(),
+        Wolfe()
+    ]
+    names = [
+        'gd + armijo',
+        'newton + wolfe',
+        'hfn + wolfe'
+    ]
+    res = run_tests2(oracle, w_opt, optimizers=global_methods, line_search_methods=ls_methods,
+                     line_search_method_names=names, max_iter=10000, tol=1e-16, verbose=0)
+    plot(res)
+
+
 def test_shit():
     X = np.array([*range(9)]).reshape((3, 3))
     a = np.array([1, 2, 3])
@@ -135,7 +174,15 @@ def test_shit():
     print(eig_vecs @ np.diagflat(eig_vals) @ eig_vecs.T)
 
 
+def gen_data(n=1000, m=20):
+    X = np.random.normal(0, 1, (n, m))
+    y = np.random.randint(2, size=n)
+    data = np.hstack([y.reshape(-1, 1), X])
+    np.savetxt('hw2/data/gen.tsv', X=data, delimiter='\t')
+
 
 # test_shit()
-test_optimization()
-# bench()
+# test_optimization()
+compare_methods()
+
+# gen_data()

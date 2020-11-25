@@ -23,11 +23,11 @@ def make_oracle(dataset_path, dataset_name=None, format='libsvm'):
 
         return Oracle(X, y)
     else:
-        data = read_csv(dataset_path, delimiter='\t')
-        data_np = data.to_numpy()
+        data_np = np.loadtxt(dataset_path, delimiter='\t')
+        # data_np = data.to_numpy()
         X, y = data_np[:, 1:], data_np[:, 0]
         ones_col = np.ones((X.shape[0], 1))
-        X = hstack((X, ones_col))
+        X = np.hstack([X, ones_col])
         return Oracle(X, y)
 
 

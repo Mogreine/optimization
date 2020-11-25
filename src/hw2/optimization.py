@@ -211,7 +211,7 @@ class Newton(Optimizer):
         return self.is_symmetric(X) and self.is_positive(X)
 
     def correct_hessian_addition(self, H):
-        eps = 1e-6
+        eps = 1e-14
         I = np.eye(H.shape[0]) * eps
         while not self.is_positive(H + I):
             I *= 2
@@ -277,6 +277,9 @@ class Newton(Optimizer):
             hess = self.correct_hessian_addition(hess)
             p_k = -self.solve_le(hess, grad, method=self.solve)
 
+            if np.linalg.norm(p_k) > 1000:
+                p_k = p_k / np.linalg.norm(p_k)
+
             alpha, oracle_calls = line_search(f=self.oracle.value, f_grad=self.oracle.grad, x_k=x_k, p_k=p_k, tol=1e-8,
                                               is_newton=True)
             if alpha is None:
@@ -325,7 +328,7 @@ class HFN(Optimizer):
             bk = rk @ rk / rk_prod
             dk = -rk + bk * dk
             k += 1
-        # print(f'conj iters: {k}')
+        print(f'conj iters: {k}')
         return zk, k
 
     def optimize(self, x0, line_search, tol=1e-8, max_iter=int(1e4), verbose=0) -> np.ndarray:
@@ -342,6 +345,9 @@ class HFN(Optimizer):
             Hd = lambda d: self.oracle.hessian_vec_product(x_k, d)
             p_k, hess_vec_prod_calls = self.solve_conj_hess_free_line_search(Hd, grad)
 
+            if np.linalg.norm(p_k) > 1000:
+                p_k = p_k / np.linalg.norm(p_k)
+
             alpha, oracle_calls = line_search(f=self.oracle.value, f_grad=self.oracle.grad, x_k=x_k, p_k=p_k, tol=1e-8,
                                               is_newton=True)
             if alpha is None:
@@ -351,6 +357,6 @@ class HFN(Optimizer):
 
             if verbose == 1:
                 print(f"{self.iters_arr[-1]}: {self.oracle.value(x_k)}; a: {alpha}")
-            self.log_data(oracle_calls, x_k)
+            self.log_data(oracle_calls + hess_vec_prod_calls + 1, x_k)
         return x_k
 
