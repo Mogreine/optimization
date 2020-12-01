@@ -76,7 +76,7 @@ class Brent(LineSearchOptimizer):
 
 
 class Armijo(LineSearchOptimizer):
-    def __init__(self, po=0.8, c=0.0001):
+    def __init__(self, po=0.1, c=0.0001):
         self.po = po
         self.c = c
 
@@ -86,7 +86,7 @@ class Armijo(LineSearchOptimizer):
         return alpha, calls
 
     @staticmethod
-    def armijo(f, grad, xk, pk, po=0.8, c=0.0001, is_newton=False):
+    def armijo(f, grad, xk, pk, po=0.1, c=0.0001, is_newton=False):
         alpha = 1 if is_newton else 100
         xk_grad = grad(xk)
         xk_val = f(xk)
@@ -127,6 +127,19 @@ class Lipschitz(LineSearchOptimizer):
             oracle_calls += 1
 
         return 2 / L, oracle_calls
+
+
+class Wolfe_Arm(LineSearchOptimizer):
+    def __init__(self):
+        self.wolfe = Wolfe()
+        self.armijo = Armijo()
+
+    def __call__(self, *args, **kwargs):
+        alpha, wolfe_calls = self.wolfe(*args, **kwargs)
+        if alpha is None:
+            alpha, armijo_calls = self.armijo(*args, **kwargs)
+            return alpha, armijo_calls + wolfe_calls
+        return alpha, wolfe_calls
 
 
 class Optimizer:
@@ -328,7 +341,7 @@ class HFN(Optimizer):
             bk = rk @ rk / rk_prod
             dk = -rk + bk * dk
             k += 1
-        print(f'conj iters: {k}')
+        # print(f'conj iters: {k}')
         return zk, k
 
     def optimize(self, x0, line_search, tol=1e-8, max_iter=int(1e4), verbose=0) -> np.ndarray:
@@ -360,3 +373,124 @@ class HFN(Optimizer):
             self.log_data(oracle_calls + hess_vec_prod_calls + 1, x_k)
         return x_k
 
+
+class LBFGS(Optimizer):
+    def stop_criterion(self, x0_grad, x_grad, tol):
+        return np.linalg.norm(x_grad) ** 2 < tol
+
+    def stop_criterion2(self, x0_grad, x_grad, tol):
+        x_grad_norm = np.linalg.norm(x_grad)
+        x0_grad_norm = np.linalg.norm(x0_grad)
+        rk = x_grad_norm ** 2 / x0_grad_norm ** 2
+        return rk < tol
+
+    def recalc1(self, B, s, y, *args):
+        id = args[0]
+        po = 1 / (s @ y)
+        M = id - po * np.outer(s, y)
+        B = M @ B @ M.T + po * np.outer(s, s)
+        return B
+
+    def recalc11(self, B, s, y, *args):
+        id = args[0]
+        po = 1 / (s @ y)
+        M = id - po * np.outer(s, y)
+        B = M @ B @ M.T + po * np.outer(s, s)
+        return B
+
+    def recalc2(self, B, s, y, *args):
+        M = y - B @ s
+        B = B + M @ M / (M @ s)
+        return B
+
+    # not inverse
+    def recalc3(self, B, s, y, *args):
+        Bs = B @ s
+        B = B - B @ np.outer(s, s) @ B / (s @ Bs) + np.outer(y, y) / (y @ s)
+        return B
+
+    def optimize(self, x0, line_search, tol=1e-8, max_iter=int(1e4), verbose=0) -> np.ndarray:
+        test = self.optimize2(x0, line_search, tol=tol, max_iter=int(1e4), verbose=0)
+        g = self.oracle.grad(x0)
+        g_pr = g.copy()
+
+        x_pr = x0.copy()
+        x = x0.copy()
+
+        B = np.eye(self.oracle.features) * 1
+        id = np.eye(self.oracle.features)
+
+        x0_grad = self.oracle.grad(x0)
+        self.init_data(x0)
+
+        for i in range(max_iter):
+            if self.stop_criterion(x0_grad, g, tol):
+                break
+
+            assert isinstance(g, np.ndarray)
+            pk = -B @ g
+
+            alpha, oracle_calls = line_search(f=self.oracle.value, f_grad=self.oracle.grad, x_k=x, p_k=pk, tol=1e-8,
+                                              is_newton=True)
+            if alpha is None:
+                alpha = 1
+            x = x + alpha * pk
+            g = self.oracle.grad(x)
+
+            s = x - x_pr
+            y = g - g_pr
+
+            B = self.recalc1(B, s, y, id)
+
+            g_pr = g.copy()
+            x_pr = x.copy()
+
+            if alpha is None:
+                alpha = 1
+
+            if verbose == 1:
+                print(f"{self.iters_arr[-1]}: {self.oracle.value(x)}; a: {alpha}")
+            self.log_data(oracle_calls + 1, x)
+        return x
+
+    def optimize2(self, x0, line_search, tol=1e-8, max_iter=int(1e4), verbose=0) -> np.ndarray:
+        oracle = self.oracle
+        oracle.oracle_calls = 0
+        x_curr = x_next = x0
+        g_curr = g_next = oracle.grad(x_curr)
+        a_k = 1
+        norm0 = np.linalg.norm(oracle.grad(x0)) ** 2
+        stop = tol * norm0
+        n = len(x0)
+        H_k = np.identity(n)
+
+        for i in range(max_iter):
+            print(f'Iter: {i}, func_value: {oracle.value(x_curr)}')
+            norm_g_curr_square = np.linalg.norm(g_curr) ** 2
+
+            # if norm_g_curr <= stop:
+            #    break
+
+            if norm_g_curr_square < tol:
+                break
+
+            d_k = - H_k @ g_curr
+            a_k, oracle_calls = line_search(f=self.oracle.value, f_grad=self.oracle.grad, x_k=x_curr, p_k=d_k, tol=1e-8,
+                                              is_newton=True)
+            if a_k is None:
+                a_k = 1
+            print(f'{a_k}')
+            x_next = x_curr + a_k * d_k
+            g_next = oracle.grad(x_next)
+            s_k = (x_next - x_curr).reshape(-1, 1)
+            y_k = (g_next - g_curr).reshape(-1, 1)
+
+            mul1 = np.identity(n) - (s_k @ y_k.T) / (s_k.T @ y_k).flatten()
+            mul2 = np.identity(n) - (y_k @ s_k.T) / (s_k.T @ y_k).flatten()
+            add = (s_k @ s_k.T) / (s_k.T @ y_k).flatten()
+
+            H_k = mul1 @ H_k @ mul2 + add
+            x_curr = x_next
+            g_curr = g_next
+            print(f'{oracle.value(x_next)}')
+        return x_curr

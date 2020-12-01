@@ -1,8 +1,8 @@
 import numpy as np
 from scipy.special import expit
 from src.hw2.oracle import make_oracle
-from src.hw2.optimization import Optimizer, GradientDescent, Newton, HFN
-from src.hw2.optimization import LineSearchOptimizer, GoldenSection, Brent, Armijo, Wolfe, Lipschitz
+from src.hw2.optimization import Optimizer, GradientDescent, Newton, HFN, LBFGS
+from src.hw2.optimization import LineSearchOptimizer, GoldenSection, Brent, Armijo, Wolfe, Lipschitz, Wolfe_Arm
 from src.hw2.oracle import Oracle
 from sklearn.datasets import load_svmlight_file
 from sklearn.linear_model import LogisticRegression
@@ -10,13 +10,14 @@ from scipy.sparse import hstack
 import timeit
 import plotly.graph_objs as go
 import plotly
+import time
 
 from typing import List
 
 
 def get_w_true(X, y):
     clf = LogisticRegression(penalty='none',
-                             tol=1e-8,
+                             tol=1e-16,
                              max_iter=10000,
                              random_state=1,
                              fit_intercept=False
@@ -83,7 +84,7 @@ def run_tests(oracle, w_opt, optimizer: Optimizer, line_search_methods: List[Lin
         w_0 = np.zeros(oracle.features)
         # w_0 = np.random.normal(0, 1, oracle.features)
         # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
-        # w_0 = np.ones(oracle.features) * 2
+        w_0 = np.ones(oracle.features) * 5
         w_pred = optimizer.optimize(w_0,
                                     line_search=method,
                                     max_iter=max_iter,
@@ -101,10 +102,12 @@ def test_optimization():
     dataset_name = 'a1a'
     oracle = make_oracle(path, dataset_name=dataset_name, format='libsvm')
     w_opt = get_w_true(oracle._X, oracle._y)
+    print(f'sklearn: {oracle.value(w_opt)}')
 
     optimizer_gd = GradientDescent(oracle)
     optimizer_newton = Newton(oracle, solve='cholesky')
     optimizer_hfn = HFN(oracle)
+
     line_search_methods = [
         Armijo(po=0.1, c=0.0001),
         Wolfe(c1=0.0001, c2=0.9),
@@ -112,7 +115,7 @@ def test_optimization():
         Brent(bracketing=True)
     ]
     line_search_names = ['armijo', 'wolfe', 'gs', 'brent']
-    res = run_tests(oracle, w_opt, optimizer=optimizer_newton, line_search_methods=line_search_methods,
+    res = run_tests(oracle, w_opt, optimizer=optimizer_gd, line_search_methods=line_search_methods,
                     line_search_method_names=line_search_names, max_iter=1000, tol=1e-16, verbose=1)
     plot(res)
 
@@ -124,7 +127,7 @@ def run_tests2(oracle, w_opt, optimizers: List[Optimizer], line_search_methods: 
         w_0 = np.zeros(oracle.features)
         # w_0 = np.random.normal(0, 1, oracle.features)
         # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
-        # w_0 = np.ones(oracle.features) * 2
+        w_0 = np.ones(oracle.features) * 1
         w_pred = method_gl.optimize(w_0,
                                     line_search=method_ls,
                                     max_iter=max_iter,
@@ -143,23 +146,26 @@ def compare_methods():
     oracle = make_oracle(path, dataset_name=dataset_name, format='libsvm')
     w_opt = get_w_true(oracle._X, oracle._y)
 
+    t = time.time()
+    print(f'sklearn: {oracle.value(w_opt)}')
+    print(f'time: {time.time() - t}')
     global_methods = [
-        GradientDescent(oracle),
+        LBFGS(oracle),
         Newton(oracle, solve='cholesky'),
-        HFN(oracle)
+        HFN(oracle),
     ]
     ls_methods = [
-        Armijo(),
+        Wolfe(),
         Wolfe(),
         Wolfe()
     ]
     names = [
-        'gd + armijo',
+        'bfgs + wolfe',
         'newton + wolfe',
-        'hfn + wolfe'
+        'hfn + wolfe',
     ]
     res = run_tests2(oracle, w_opt, optimizers=global_methods, line_search_methods=ls_methods,
-                     line_search_method_names=names, max_iter=10000, tol=1e-16, verbose=0)
+                     line_search_method_names=names, max_iter=10000, tol=1e-16, verbose=1)
     plot(res)
 
 
