@@ -374,43 +374,18 @@ class HFN(Optimizer):
         return x_k
 
 
-class LBFGS(Optimizer):
+class BFGS(Optimizer):
     def stop_criterion(self, x0_grad, x_grad, tol):
         return np.linalg.norm(x_grad) ** 2 < tol
 
-    def stop_criterion2(self, x0_grad, x_grad, tol):
-        x_grad_norm = np.linalg.norm(x_grad)
-        x0_grad_norm = np.linalg.norm(x0_grad)
-        rk = x_grad_norm ** 2 / x0_grad_norm ** 2
-        return rk < tol
-
-    def recalc1(self, B, s, y, *args):
+    def recalc(self, B, s, y, *args):
         id = args[0]
         po = 1 / (s @ y)
         M = id - po * np.outer(s, y)
         B = M @ B @ M.T + po * np.outer(s, s)
-        return B
-
-    def recalc11(self, B, s, y, *args):
-        id = args[0]
-        po = 1 / (s @ y)
-        M = id - po * np.outer(s, y)
-        B = M @ B @ M.T + po * np.outer(s, s)
-        return B
-
-    def recalc2(self, B, s, y, *args):
-        M = y - B @ s
-        B = B + M @ M / (M @ s)
-        return B
-
-    # not inverse
-    def recalc3(self, B, s, y, *args):
-        Bs = B @ s
-        B = B - B @ np.outer(s, s) @ B / (s @ Bs) + np.outer(y, y) / (y @ s)
         return B
 
     def optimize(self, x0, line_search, tol=1e-8, max_iter=int(1e4), verbose=0) -> np.ndarray:
-        test = self.optimize2(x0, line_search, tol=tol, max_iter=int(1e4), verbose=0)
         g = self.oracle.grad(x0)
         g_pr = g.copy()
 
@@ -440,7 +415,7 @@ class LBFGS(Optimizer):
             s = x - x_pr
             y = g - g_pr
 
-            B = self.recalc1(B, s, y, id)
+            B = self.recalc(B, s, y, id)
 
             g_pr = g.copy()
             x_pr = x.copy()
@@ -453,44 +428,129 @@ class LBFGS(Optimizer):
             self.log_data(oracle_calls + 1, x)
         return x
 
-    def optimize2(self, x0, line_search, tol=1e-8, max_iter=int(1e4), verbose=0) -> np.ndarray:
-        oracle = self.oracle
-        oracle.oracle_calls = 0
-        x_curr = x_next = x0
-        g_curr = g_next = oracle.grad(x_curr)
-        a_k = 1
-        norm0 = np.linalg.norm(oracle.grad(x0)) ** 2
-        stop = tol * norm0
-        n = len(x0)
-        H_k = np.identity(n)
+
+class LBFGS(Optimizer):
+    def __init__(self, oracle, m: int):
+        super().__init__(oracle)
+        self.m = m
+        self.n = oracle.features
+        self.S = np.ndarray
+        self.Y = np.ndarray
+        self.R = np.zeros(shape=(m, m))
+        self.D = np.zeros(shape=(m, m))
+
+    def stop_criterion(self, x0_grad, x_grad, tol):
+        return np.linalg.norm(x_grad) ** 2 < tol
+
+    def recalc(self, s: np.ndarray, y: np.ndarray, g: np.ndarray):
+        R = self.R
+        S = self.S
+        Y = self.Y
+        D = self.D
+
+        Y[:, :-1] = Y[:, 1:]
+        Y[:, -1] = y
+
+        S[:, :-1] = S[:, 1:]
+        S[:, -1] = s
+
+        R[:-1, :-1] = R[1:, 1:]
+        R[-1] = 0
+        R[:, -1] = S.T @ y
+
+        R_inv = np.linalg.inv(R)
+
+        D[:-1, :-1] = D[1:, 1:]
+        D[-1, -1] = s @ y
+
+        Y_qd = self.Y.T @ self.Y
+        gamma = y @ s / (y @ y)
+
+        p = np.vstack((R_inv.T @ (D + gamma * Y_qd) @ R_inv @ (S.T @ g) - gamma * R_inv.T @ (Y.T @ g),
+                       -R_inv @ (S.T @ g))).reshape(-1, 1)
+
+        Hg = gamma * g + (np.hstack((S, gamma * Y)) @ p).flatten()
+
+        self.R = R
+        self.S = S
+        self.Y = Y
+        self.D = D
+        return Hg
+
+    def recalc2(self, s: np.ndarray, y: np.ndarray, g: np.ndarray, k):
+        R = self.R
+        S = self.S
+        Y = self.Y
+        D = self.D
+
+        if k == 1:
+            S = s.reshape(-1, 1)
+            Y = y.reshape(-1, 1)
+            R = np.zeros((1, 1)) + s @ y
+            D = np.zeros((1, 1)) + s @ y
+        else:
+            S = np.hstack((S, s.reshape(-1, 1)))
+            Y = np.hstack((Y, y.reshape(-1, 1)))
+
+            # expand R
+            tmp = np.zeros(shape=(k, k))
+            tmp[:-1, :-1] = R
+            R = tmp
+            R[:, -1] = S.T @ y
+
+            D = np.diagflat(np.append(np.diagonal(D), s @ y))
+
+        R_inv = np.linalg.inv(R)
+        Y_qd = Y.T @ Y
+        gamma = y @ s / (y @ y)
+
+        p = np.vstack((R_inv.T @ (D + gamma * Y_qd) @ R_inv @ (S.T @ g) - gamma * R_inv.T @ (Y.T @ g),
+                       -R_inv @ (S.T @ g))).reshape(-1, 1)
+
+        Hg = gamma * g + (np.hstack((S, gamma * Y)) @ p).flatten()
+
+
+        self.R = R
+        self.S = S
+        self.Y = Y
+        self.D = D
+        return Hg
+
+    def optimize(self, x0, line_search, tol=1e-8, max_iter=int(1e4), verbose=0) -> np.ndarray:
+        g = self.oracle.grad(x0)
+        g_pr = g.copy()
+
+        x_pr = x0.copy()
+        x = x0.copy()
+
+        x0_grad = self.oracle.grad(x0)
+        self.init_data(x0)
+
+        pk = -g
 
         for i in range(max_iter):
-            print(f'Iter: {i}, func_value: {oracle.value(x_curr)}')
-            norm_g_curr_square = np.linalg.norm(g_curr) ** 2
-
-            # if norm_g_curr <= stop:
-            #    break
-
-            if norm_g_curr_square < tol:
+            if self.stop_criterion(x0_grad, g, tol):
                 break
 
-            d_k = - H_k @ g_curr
-            a_k, oracle_calls = line_search(f=self.oracle.value, f_grad=self.oracle.grad, x_k=x_curr, p_k=d_k, tol=1e-8,
+            alpha, oracle_calls = line_search(f=self.oracle.value, f_grad=self.oracle.grad, x_k=x, p_k=pk, tol=1e-8,
                                               is_newton=True)
-            if a_k is None:
-                a_k = 1
-            print(f'{a_k}')
-            x_next = x_curr + a_k * d_k
-            g_next = oracle.grad(x_next)
-            s_k = (x_next - x_curr).reshape(-1, 1)
-            y_k = (g_next - g_curr).reshape(-1, 1)
+            if alpha is None:
+                alpha = 1
+            x = x + alpha * pk
+            g = self.oracle.grad(x)
 
-            mul1 = np.identity(n) - (s_k @ y_k.T) / (s_k.T @ y_k).flatten()
-            mul2 = np.identity(n) - (y_k @ s_k.T) / (s_k.T @ y_k).flatten()
-            add = (s_k @ s_k.T) / (s_k.T @ y_k).flatten()
+            s = x - x_pr
+            y = g - g_pr
 
-            H_k = mul1 @ H_k @ mul2 + add
-            x_curr = x_next
-            g_curr = g_next
-            print(f'{oracle.value(x_next)}')
-        return x_curr
+            if i < self.m:
+                pk = -self.recalc2(s, y, g, i + 1)
+            else:
+                pk = -self.recalc(s, y, g)
+
+            g_pr = g.copy()
+            x_pr = x.copy()
+
+            if verbose == 1:
+                print(f"{self.iters_arr[-1]}: {self.oracle.value(x)}; a: {alpha}")
+            self.log_data(oracle_calls + 1, x)
+        return x

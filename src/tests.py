@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.special import expit
 from src.hw2.oracle import make_oracle
-from src.hw2.optimization import Optimizer, GradientDescent, Newton, HFN, LBFGS
+from src.hw2.optimization import Optimizer, GradientDescent, Newton, HFN, BFGS, LBFGS
 from src.hw2.optimization import LineSearchOptimizer, GoldenSection, Brent, Armijo, Wolfe, Lipschitz, Wolfe_Arm
 from src.hw2.oracle import Oracle
 from sklearn.datasets import load_svmlight_file
@@ -150,7 +150,7 @@ def compare_methods():
     print(f'sklearn: {oracle.value(w_opt)}')
     print(f'time: {time.time() - t}')
     global_methods = [
-        LBFGS(oracle),
+        LBFGS(oracle, 10),
         Newton(oracle, solve='cholesky'),
         HFN(oracle),
     ]
@@ -187,6 +187,15 @@ def gen_data(n=1000, m=20):
     np.savetxt('hw2/data/gen.tsv', X=data, delimiter='\t')
 
 
+def test():
+    a = np.block([
+        [1, 2, 3],
+        [1, 2] + [0]
+    ])
+    print(a)
+
+
+# test()
 # test_shit()
 # test_optimization()
 compare_methods()

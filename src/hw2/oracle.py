@@ -56,7 +56,6 @@ class Oracle:
         return np.diagflat(sigs)
 
     def value(self, w):
-        assert len(w.shape) == 1, "x should be a vector: len(x.shape) is not 1"
         sig_x = self.sigmoid_X(w)
 
         # sum of y_i*log(sig_w(x_i))
