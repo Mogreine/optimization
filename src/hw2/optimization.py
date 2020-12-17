@@ -578,11 +578,6 @@ class LogRegl1(Optimizer):
         x = self.prox_operator(xk, xk_grad, L)
         F = lambda x: self.oracle.value(x) + self.l * np.linalg.norm(x, ord=1)
 
-        f = lambda x: self.oracle.value(x)
-        pk = -xk_grad
-        tmp = f(xk + 1 / L * pk) > xk_val + 1 / L * xk_grad @ pk + 1 / 2 / L * pk @ pk
-
-
         while F(x) > xk_val + xk_grad @ (x - xk) + L / 2 * np.linalg.norm(x - xk) ** 2 + self.l * np.linalg.norm(x, ord=1):
             L *= 2
             x = self.prox_operator(xk, xk_grad, L)
