@@ -554,3 +554,48 @@ class LBFGS(Optimizer):
                 print(f"{self.iters_arr[-1]}: {self.oracle.value(x)}; a: {alpha}")
             self.log_data(oracle_calls + 1, x)
         return x
+
+
+class LogRegl1(Optimizer):
+    def __init__(self, oracle, l: float):
+        super().__init__(oracle)
+        self.l = l
+
+    def stop_criterion(self, xk_prev, xk, alpha, tol):
+        return np.linalg.norm((xk - xk_prev) / alpha) ** 2 < tol
+
+    def prox_operator(self, x, grad, alpha):
+        pk_old = x - alpha * grad
+        max_part = np.absolute(pk_old) - alpha * self.l
+        max_part[max_part < 0] = 0
+        return np.sign(pk_old) * max_part
+
+    def line_search(self, xk, xk_grad):
+        oracle_calls = 1
+        xk_val = self.oracle.value(xk)
+        alpha = 1
+        x = self.prox_operator(xk, xk_grad, alpha)
+        F = lambda x: self.oracle.value(x) + self.l * np.linalg.norm(x, ord=1)
+        while F(x) > xk_val + alpha * xk_grad @ (x - xk) + alpha / 2 * np.linalg.norm(x - xk) ** 2 + self.l * np.linalg.norm(x, ord=1):
+            alpha *= 2
+            x = self.prox_operator(xk, xk_grad, alpha)
+        alpha /= 2
+        x = self.prox_operator(xk, xk_grad, alpha)
+        return x, oracle_calls, alpha
+
+    def optimize(self, x0, line_search=None, tol=1e-8, max_iter=int(1e4), verbose=0) -> np.ndarray:
+        xk = x0.copy()
+        self.init_data(x0)
+        for i in range(max_iter):
+            grad = self.oracle.grad(xk)
+
+            xk_prev = xk.copy()
+            xk, oracle_calls, alpha = self.line_search(xk, grad)
+
+            self.log_data(oracle_calls + 1, xk)
+
+            if self.stop_criterion(xk_prev, xk, alpha, tol):
+                break
+            if verbose == 1:
+                print(f"{self.iters_arr[-1]}: {self.oracle.value(xk)}; a: {alpha}")
+        return xk
