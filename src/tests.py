@@ -127,7 +127,7 @@ def run_tests2(oracle, w_opt, optimizers: List[Optimizer], line_search_methods: 
         w_0 = np.zeros(oracle.features)
         # w_0 = np.random.normal(0, 1, oracle.features)
         # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
-        # w_0 = np.ones(oracle.features) * 3
+        # w_0 = np.ones(oracle.features) * 4
         w_pred = method_gl.optimize(w_0,
                                     line_search=method_ls,
                                     max_iter=max_iter,
@@ -150,7 +150,7 @@ def compare_methods():
     print(f'sklearn: {oracle.value(w_opt)}')
     print(f'time: {time.time() - t}')
     global_methods = [
-        LBFGS(oracle, 100),
+        LBFGS(oracle, 1),
         BFGS(oracle),
         Newton(oracle, solve='cholesky'),
         HFN(oracle),
