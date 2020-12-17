@@ -565,6 +565,7 @@ class LogRegl1(Optimizer):
         return np.linalg.norm((xk - xk_prev) / alpha) ** 2 < tol
 
     def prox_operator(self, x, grad, alpha):
+        alpha = 1 / alpha
         pk_old = x - alpha * grad
         max_part = np.absolute(pk_old) - alpha * self.l
         max_part[max_part < 0] = 0
@@ -573,15 +574,22 @@ class LogRegl1(Optimizer):
     def line_search(self, xk, xk_grad):
         oracle_calls = 1
         xk_val = self.oracle.value(xk)
-        alpha = 1
-        x = self.prox_operator(xk, xk_grad, alpha)
+        L = 0.01
+        x = self.prox_operator(xk, xk_grad, L)
         F = lambda x: self.oracle.value(x) + self.l * np.linalg.norm(x, ord=1)
-        while F(x) > xk_val + alpha * xk_grad @ (x - xk) + alpha / 2 * np.linalg.norm(x - xk) ** 2 + self.l * np.linalg.norm(x, ord=1):
-            alpha *= 2
-            x = self.prox_operator(xk, xk_grad, alpha)
-        alpha /= 2
-        x = self.prox_operator(xk, xk_grad, alpha)
-        return x, oracle_calls, alpha
+
+        f = lambda x: self.oracle.value(x)
+        pk = -xk_grad
+        tmp = f(xk + 1 / L * pk) > xk_val + 1 / L * xk_grad @ pk + 1 / 2 / L * pk @ pk
+
+
+        while F(x) > xk_val + xk_grad @ (x - xk) + L / 2 * np.linalg.norm(x - xk) ** 2 + self.l * np.linalg.norm(x, ord=1):
+            L *= 2
+            x = self.prox_operator(xk, xk_grad, L)
+            oracle_calls += 1
+        L /= 2
+        x = self.prox_operator(xk, xk_grad, L)
+        return x, oracle_calls, 1 / L
 
     def optimize(self, x0, line_search=None, tol=1e-8, max_iter=int(1e4), verbose=0) -> np.ndarray:
         xk = x0.copy()

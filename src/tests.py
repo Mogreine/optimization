@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.special import expit
 from src.hw2.oracle import make_oracle
-from src.hw2.optimization import Optimizer, GradientDescent, Newton, HFN, BFGS, LBFGS
+from src.hw2.optimization import Optimizer, GradientDescent, Newton, HFN, BFGS, LBFGS, LogRegl1
 from src.hw2.optimization import LineSearchOptimizer, GoldenSection, Brent, Armijo, Wolfe, Lipschitz, Wolfe_Arm
 from src.hw2.oracle import Oracle
 from sklearn.datasets import load_svmlight_file
@@ -125,9 +125,9 @@ def run_tests2(oracle, w_opt, optimizers: List[Optimizer], line_search_methods: 
     res = {}
     for method_gl, method_ls, name in zip(optimizers, line_search_methods, line_search_method_names):
         w_0 = np.zeros(oracle.features)
-        # w_0 = np.random.normal(0, 1, oracle.features)
-        # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
-        # w_0 = np.ones(oracle.features) * 4
+        w_0 = np.random.normal(0, 1, oracle.features)
+        w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
+        w_0 = np.ones(oracle.features) * 4
         w_pred = method_gl.optimize(w_0,
                                     line_search=method_ls,
                                     max_iter=max_iter,
@@ -150,25 +150,31 @@ def compare_methods():
     print(f'sklearn: {oracle.value(w_opt)}')
     print(f'time: {time.time() - t}')
     global_methods = [
-        LBFGS(oracle, 1),
-        BFGS(oracle),
-        Newton(oracle, solve='cholesky'),
-        HFN(oracle),
+        LogRegl1(oracle, l=0.01),
+        GradientDescent(oracle),
+        # LBFGS(oracle, 1),
+        # BFGS(oracle),
+        # Newton(oracle, solve='cholesky'),
+        # HFN(oracle),
     ]
     ls_methods = [
-        Wolfe(),
-        Wolfe(),
-        Wolfe(),
-        Wolfe()
+        None,
+        Lipschitz(),
+        # Wolfe(),
+        # Wolfe(),
+        # Wolfe(),
+        # Wolfe()
     ]
     names = [
-        'l-bfgs + wolfe',
-        'bfgs + wolfe',
-        'newton + wolfe',
-        'hfn + wolfe',
+        'proximal gd \w l1',
+        'gd + lipschitz'
+        # 'l-bfgs + wolfe',
+        # 'bfgs + wolfe',
+        # 'newton + wolfe',
+        # 'hfn + wolfe',
     ]
     res = run_tests2(oracle, w_opt, optimizers=global_methods, line_search_methods=ls_methods,
-                     line_search_method_names=names, max_iter=10000, tol=1e-8, verbose=1)
+                     line_search_method_names=names, max_iter=4000, tol=1e-8, verbose=1)
     plot(res)
 
 
