@@ -562,7 +562,8 @@ class LBFGS(Optimizer):
 class LogRegl1(Optimizer):
     def __init__(self, oracle, l: float):
         super().__init__(oracle)
-        self.l = l
+        self.l1 = l
+        self.L = 0.01
 
     def stop_criterion(self, xk_prev, xk, alpha, tol):
         return np.linalg.norm((xk - xk_prev) / alpha) ** 2 < tol
@@ -570,22 +571,23 @@ class LogRegl1(Optimizer):
     def prox_operator(self, x, grad, alpha):
         alpha = 1 / alpha
         pk_old = x - alpha * grad
-        max_part = np.absolute(pk_old) - alpha * self.l
+        max_part = np.absolute(pk_old) - alpha * self.l1
         max_part[max_part < 0] = 0
         return np.sign(pk_old) * max_part
 
     def line_search(self, xk, xk_grad):
-        oracle_calls = 1
         xk_val = self.oracle.value(xk)
-        L = 0.01
+        L = self.L
         x = self.prox_operator(xk, xk_grad, L)
-        F = lambda x: self.oracle.value(x) + self.l * np.linalg.norm(x, ord=1)
+        oracle_calls = 1
 
-        while F(x) > xk_val + xk_grad @ (x - xk) + L / 2 * np.linalg.norm(x - xk) ** 2 + self.l * np.linalg.norm(x, ord=1):
+        F = lambda x: self.oracle.value(x) + self.l1 * np.linalg.norm(x, ord=1)
+        while F(x) > xk_val + xk_grad @ (x - xk) + L / 2 * np.linalg.norm(x - xk) ** 2 + self.l1 * np.linalg.norm(x, ord=1):
             L *= 2
             x = self.prox_operator(xk, xk_grad, L)
             oracle_calls += 1
         L /= 2
+        self.L =L
         x = self.prox_operator(xk, xk_grad, L)
         return x, oracle_calls, 1 / L
 
