@@ -112,12 +112,14 @@ class Wolfe(LineSearchOptimizer):
 
 
 class Lipschitz(LineSearchOptimizer):
+    def __init__(self):
+        self.L = 0.01
+
     def __call__(self, *args, **kwargs):
         return self.lip_const(kwargs['f'], kwargs['f_grad'], kwargs['x_k'], kwargs['p_k'])
 
-    @staticmethod
-    def lip_const(f, grad, xk, pk):
-        L = 0.01
+    def lip_const(self, f, grad, xk, pk):
+        L = self.L
         xk_grad = grad(xk)
         xk_val = f(xk)
         oracle_calls = 2
@@ -125,8 +127,9 @@ class Lipschitz(LineSearchOptimizer):
         while f(xk + 1 / L * pk) > xk_val + 1 / L * xk_grad @ pk + 1 / 2 / L * pk @ pk:
             L *= 2
             oracle_calls += 1
-
-        return 2 / L, oracle_calls
+        L /= 2
+        self.L = L
+        return 1 / L, oracle_calls
 
 
 class Wolfe_Arm(LineSearchOptimizer):

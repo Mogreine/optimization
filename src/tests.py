@@ -39,7 +39,7 @@ def _plot(data, graph_name):
     names_map = {
         'time': 0,
         'calls': 1,
-        'iters': 2
+        'iters': 2,
     }
     ind = names_map[graph_name]
     traces = []
@@ -66,6 +66,35 @@ def _plot(data, graph_name):
     layout = go.Layout(
         xaxis=dict(title=graph_name, zeroline=False),
         yaxis=dict(title='$log_{10}|F(w_i) - F(w^*)|$', zeroline=False)
+    )
+
+    fig = go.Figure(data=traces, layout=layout)
+    plotly.offline.iplot(fig)
+
+
+def _plot2(data, graph_name):
+    def gen_color():
+        return {
+            'color': f'rgba({np.random.randint(0, 255)},'
+                     f' {np.random.randint(0, 255)},'
+                     f' {np.random.randint(0, 255)},'
+                     f' 0.8)'
+        }
+    traces = []
+    for method_name, method_data in data.items():
+        traces.append(
+            go.Scatter(
+                x=method_data[1],
+                y=method_data[0],
+                mode='lines',
+                marker=gen_color(),
+                name=method_name
+            )
+        )
+
+    layout = go.Layout(
+        xaxis=dict(title="$log(\lambda)$", zeroline=False),
+        yaxis=dict(title='$w$', zeroline=False)
     )
 
     fig = go.Figure(data=traces, layout=layout)
@@ -125,9 +154,9 @@ def run_tests2(oracle, w_opt, optimizers: List[Optimizer], line_search_methods: 
     res = {}
     for method_gl, method_ls, name in zip(optimizers, line_search_methods, line_search_method_names):
         w_0 = np.zeros(oracle.features)
-        w_0 = np.random.normal(0, 1, oracle.features)
-        w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
-        w_0 = np.ones(oracle.features) * 4
+        # w_0 = np.random.normal(0, 1, oracle.features)
+        # w_0 = np.random.uniform(-1 / np.sqrt(oracle.features), 1 / np.sqrt(oracle.features), size=oracle.features)
+        # w_0 = np.ones(oracle.features) * 4
         w_pred = method_gl.optimize(w_0,
                                     line_search=method_ls,
                                     max_iter=max_iter,
@@ -140,6 +169,20 @@ def run_tests2(oracle, w_opt, optimizers: List[Optimizer], line_search_methods: 
     return res
 
 
+def run_tests3(oracle, optimizers: List[Optimizer], max_iter=4000, tol=1e-8, verbose=0):
+    ws = []
+    for method_gl in optimizers:
+        w_0 = np.zeros(oracle.features)
+        w_pred = method_gl.optimize(w_0,
+                                    line_search=None,
+                                    max_iter=max_iter,
+                                    tol=tol,
+                                    verbose=verbose)
+        ws.append(w_pred)
+    ws = np.array(ws)
+    return ws
+
+
 def compare_methods():
     path = 'hw2/data/a1a.txt'
     dataset_name = 'a1a'
@@ -150,7 +193,7 @@ def compare_methods():
     print(f'sklearn: {oracle.value(w_opt)}')
     print(f'time: {time.time() - t}')
     global_methods = [
-        LogRegl1(oracle, l=0.01),
+        LogRegl1(oracle, l=0.0),
         GradientDescent(oracle),
         # LBFGS(oracle, 1),
         # BFGS(oracle),
@@ -174,8 +217,25 @@ def compare_methods():
         # 'hfn + wolfe',
     ]
     res = run_tests2(oracle, w_opt, optimizers=global_methods, line_search_methods=ls_methods,
-                     line_search_method_names=names, max_iter=4000, tol=1e-8, verbose=1)
+                     line_search_method_names=names, max_iter=1000, tol=1e-8, verbose=1)
     plot(res)
+
+
+def plot_weighs():
+    path = 'hw2/data/a1a.txt'
+    dataset_name = 'a1a'
+    oracle = make_oracle(path, dataset_name=dataset_name, format='libsvm')
+
+    ls = [1e-8 * 10 ** i for i in range(9)]
+    global_methods = [LogRegl1(oracle, l=l) for l in ls]
+
+    ws = run_tests3(oracle, optimizers=global_methods, max_iter=3000, tol=1e-8, verbose=1)
+
+    res = {}
+    for i in range(ws.shape[1]):
+        res[f'w{i}'] = (ws[:, i], np.log10(ls))
+
+    plot(res, graph=('s'))
 
 
 def test_shit():
@@ -208,5 +268,4 @@ def test():
 # test_shit()
 # test_optimization()
 compare_methods()
-
-# gen_data()
+# plot_weighs()
