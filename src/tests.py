@@ -72,7 +72,7 @@ def _plot(data, graph_name):
     plotly.offline.iplot(fig)
 
 
-def _plot2(data, graph_name):
+def _plot2(data, *args):
     def gen_color():
         return {
             'color': f'rgba({np.random.randint(0, 255)},'
@@ -80,6 +80,7 @@ def _plot2(data, graph_name):
                      f' {np.random.randint(0, 255)},'
                      f' 0.8)'
         }
+
     traces = []
     for method_name, method_data in data.items():
         traces.append(
@@ -103,7 +104,7 @@ def _plot2(data, graph_name):
 
 def plot(data: dict, graph=('time', 'calls', 'iters')):
     for graph_name in graph:
-        _plot(data, graph_name)
+        _plot2(data, graph_name)
 
 
 def run_tests(oracle, w_opt, optimizer: Optimizer, line_search_methods: List[LineSearchOptimizer],
@@ -193,7 +194,7 @@ def compare_methods():
     print(f'sklearn: {oracle.value(w_opt)}')
     print(f'time: {time.time() - t}')
     global_methods = [
-        LogRegl1(oracle, l=0.0),
+        LogRegl1(oracle, l=0.01),
         GradientDescent(oracle),
         # LBFGS(oracle, 1),
         # BFGS(oracle),
@@ -231,11 +232,14 @@ def plot_weighs():
 
     ws = run_tests3(oracle, optimizers=global_methods, max_iter=3000, tol=1e-8, verbose=1)
 
-    res = {}
+    weights_hist = {}
+    nonzeros_count = np.count_nonzero(np.absolute(ws) < 1e-8, axis=1)
+    weights_zeros = {'non zeros': (nonzeros_count, np.log10(ls))}
     for i in range(ws.shape[1]):
-        res[f'w{i}'] = (ws[:, i], np.log10(ls))
+        weights_hist[f'w{i}'] = (ws[:, i], np.log10(ls))
 
-    plot(res, graph=('s'))
+    plot(weights_hist, graph=('s'))
+    plot(weights_zeros, graph=('s'))
 
 
 def test_shit():
@@ -267,5 +271,5 @@ def test():
 # test()
 # test_shit()
 # test_optimization()
-compare_methods()
-# plot_weighs()
+# compare_methods()
+plot_weighs()
